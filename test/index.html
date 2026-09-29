@@ -111,6 +111,7 @@
   .ramp { width: 72px !important; border-radius: 99px; background: linear-gradient(90deg, #1e3a6e, #2ee6a6, #ffb020, #ff5d73); }
   canvas { width: 100%; display: block; touch-action: pan-y; }
   #area { height: 260px; }
+  #donut, #bars, #regions, #studios, #heat { cursor: pointer; }
   #donut, #bars, #regions, #studios { height: 230px; }
   #heat { height: 250px; }
   .tip { min-height: 1.2em; color: #ffd27a; font-size: 12px; margin-top: 6px; }
@@ -139,6 +140,43 @@
   .pill { display: inline-flex; align-items: center; width: fit-content; max-width: 100%; padding: 2px 8px; border-radius: 999px; color: var(--c); background: color-mix(in srgb, var(--c) 18%, transparent); }
   .rowline b { font-weight: 650; }
   .empty { padding: 28px 12px; color: rgba(255,255,255,.6); }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tools button, .sheet button {
+    appearance: none;
+    border: 1px solid rgba(148,176,214,.3);
+    background: #182338;
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    border-radius: 999px;
+    min-height: 36px;
+    padding: 8px 14px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .tools button[aria-pressed="true"] { background: #E69F00; color: #071018; border-color: transparent; font-weight: 700; }
+  .lead { margin-top: 8px; max-width: 46rem; color: #d5e2f5; font-size: 15px; line-height: 1.45; }
+  .rowline { cursor: pointer; }
+  .rowline:hover { background: rgba(76,141,255,.08); }
+  .rowline:focus-visible, .tools button:focus-visible, .sheet button:focus-visible { outline: 2px solid #8eb6ff; outline-offset: 2px; }
+  .modal[hidden] { display: none; }
+  .modal {
+    position: fixed; inset: 0; z-index: 40; display: grid; place-items: center;
+    padding: 18px; background: rgba(4, 8, 16, .72);
+  }
+  .sheet {
+    width: min(560px, 100%); max-height: min(82vh, 680px); overflow: auto;
+    background: #101826; border: 1px solid var(--line); border-radius: 18px;
+    padding: 18px 18px 16px; box-shadow: 0 24px 80px rgba(0,0,0,.45);
+  }
+  .sheet h2 { font-size: 22px; letter-spacing: -.03em; color: #fff; }
+  .sheet p, .sheet li { color: #d5e2f5; font-size: 14px; line-height: 1.5; }
+  .sheet ul { margin: 10px 0 0 1.1rem; }
+  .sheet .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .kv { display: grid; grid-template-columns: 9.5rem 1fr; gap: 8px 12px; margin-top: 14px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { color: #fff; }
+  body.cvd .ramp { background: linear-gradient(90deg, #0072B2, #E69F00); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   @media (max-width: 1100px) {
     .charts { grid-template-columns: 1fr 1fr; }
@@ -166,9 +204,14 @@
     <div>
       <p class="eye">Nathan · Test</p>
       <h1>Atlas</h1>
+      <p class="lead">Chaque ligne est une opération d’architecture inventée : un atelier, une ville, un type de bâtiment, un statut, une année, un budget, une surface et un score.</p>
     </div>
-    <p class="meta" id="meta">Jeu de données fictif. 100&nbsp;000 opérations générées dans le navigateur, rien n’est envoyé.</p>
+    <div class="tools">
+      <button type="button" id="about">Les données</button>
+      <button type="button" id="cvd" aria-pressed="false">Mode daltonien</button>
+    </div>
   </header>
+  <p class="meta" id="meta">100&nbsp;000 lignes fictives, calculées dans cette page. Rien n’est envoyé.</p>
   <section class="filters" aria-label="Filtres">
     <div class="row">
       <label class="lbl" for="q">Recherche</label>
@@ -196,7 +239,7 @@
     <article class="panel span2">
       <div class="ph">
         <h2>Budget et volume</h2>
-        <p class="legend"><i style="background:#ffb020"></i>Budget <i style="background:#4c8dff"></i>Opérations</p>
+        <p class="legend"><i id="leg-budget" style="background:#ffb020"></i>Budget <i id="leg-count" style="background:#4c8dff"></i>Opérations</p>
       </div>
       <canvas id="area" width="800" height="260"></canvas>
       <p class="tip" id="tip">Survole la courbe pour le détail d’une année.</p>
@@ -233,6 +276,13 @@
     </div>
   </section>
 </main>
+<div class="modal" id="dialog" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+    <h2 id="dlg-title"></h2>
+    <div id="dlg-body"></div>
+    <div class="acts" id="dlg-acts"></div>
+  </div>
+</div>
 <script>
 (function () {
   const N = 100000;
@@ -241,9 +291,23 @@
   const REGIONS = ['Europe', 'Asie', 'Amériques', 'Afrique', 'Océanie'];
   const TYPES = ['Musée', 'Logement', 'Campus', 'Gare', 'Tour', 'Paysage'];
   const STATUSES = ['Livré', 'Chantier', 'Concours', 'Étude'];
-  const REG_C = ['#4c8dff', '#2ee6a6', '#ffb020', '#ff5d73', '#b388ff'];
-  const TYPE_C = ['#7aa2ff', '#3dd6c6', '#f0c14a', '#ff7a59', '#c084fc', '#67e8f9'];
-  const STAT_C = ['#3dd68c', '#ff9f43', '#5b8def', '#94a3b8'];
+  const PALETTE = {
+    reg: ['#4c8dff', '#2ee6a6', '#ffb020', '#ff5d73', '#b388ff'],
+    type: ['#7aa2ff', '#3dd6c6', '#f0c14a', '#ff7a59', '#c084fc', '#67e8f9'],
+    stat: ['#3dd68c', '#ff9f43', '#5b8def', '#94a3b8'],
+    budget: '#ffb020',
+    count: '#4c8dff'
+  };
+  const PALETTE_CVD = {
+    reg: ['#0072B2', '#E69F00', '#009E73', '#CC79A7', '#56B4E9'],
+    type: ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7', '#F0E442'],
+    stat: ['#009E73', '#E69F00', '#0072B2', '#999999'],
+    budget: '#E69F00',
+    count: '#0072B2'
+  };
+  let cvd = false;
+  try { cvd = localStorage.getItem('atlas-cvd') === '1'; } catch (e) { cvd = false; }
+  function pal() { return cvd ? PALETTE_CVD : PALETTE; }
   const CITIES = [
     ['Paris','Lyon','Bordeaux','Lille','Nantes','Marseille','Bruxelles','Genève','Lisbonne','Berlin','Milan','Barcelone'],
     ['Tokyo','Séoul','Singapour','Shanghai','Kyoto','Taipei','Bangkok','Mumbai'],
@@ -523,7 +587,7 @@
       pts.push([x, y]);
     }
     const grad = c.createLinearGradient(0, pad.t, 0, pad.t + ih);
-    grad.addColorStop(0, 'rgba(255,176,32,.45)');
+    grad.addColorStop(0, cvd ? 'rgba(230,159,0,.5)' : 'rgba(255,176,32,.45)');
     grad.addColorStop(1, 'rgba(255,176,32,0)');
     c.beginPath();
     c.moveTo(pts[0][0], pad.t + ih);
@@ -534,7 +598,7 @@
     c.fill();
     c.beginPath();
     pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]));
-    c.strokeStyle = '#ffb020';
+    c.strokeStyle = pal().budget;
     c.lineWidth = 2.5;
     c.stroke();
     const maxC = maxOf(v.byYearC);
@@ -544,7 +608,7 @@
       const y = pad.t + ih * (1 - v.byYearC[i] / maxC);
       i ? c.lineTo(x, y) : c.moveTo(x, y);
     }
-    c.strokeStyle = '#4c8dff';
+    c.strokeStyle = pal().count;
     c.lineWidth = 2;
     c.stroke();
     c.fillStyle = 'rgba(255,255,255,.55)';
@@ -564,13 +628,13 @@
       const part = total ? v.byStatus[i] / total : 0;
       const a1 = a0 + Math.PI * 2 * part;
       c.beginPath();
-      c.strokeStyle = STAT_C[i];
+      c.strokeStyle = pal().stat[i];
       c.lineWidth = 16;
       c.arc(cx, cy, r, a0, a1);
       c.stroke();
       a0 = a1;
       const pct = total ? Math.round(part * 100) : 0;
-      c.fillStyle = STAT_C[i];
+      c.fillStyle = pal().stat[i];
       c.beginPath();
       c.arc(w * 0.66, 36 + i * 34, 5, 0, Math.PI * 2);
       c.fill();
@@ -585,7 +649,7 @@
     c.fillText(fmt.format(Math.round(v.count)), cx, cy + 4);
   }
   function drawBars(v) {
-    drawLabeled(barsC, TYPES, v.byType, TYPE_C);
+    drawLabeled(barsC, TYPES, v.byType, pal().type);
   }
   function drawHeat(v) {
     const { c, w, h } = ctxOf(heatC);
@@ -602,7 +666,7 @@
       c.fillText(REGIONS[r], left - 8, top + ch * r + ch / 2);
       for (let y = 0; y < YEARS; y++) {
         const val = v.heat[r * YEARS + y] / max;
-        c.fillStyle = heatColor(val);
+        c.fillStyle = heatColor(val, cvd);
         roundRect(c, left + cw * y + 2, top + ch * r + 2, Math.max(0, cw - 4), Math.max(0, ch - 4), 5);
       }
     }
@@ -621,8 +685,10 @@
     c.closePath();
     c.fill();
   }
-  function heatColor(t) {
-    const stops = [[30, 58, 110], [46, 230, 166], [255, 176, 32], [255, 93, 115]];
+  function heatColor(t, safe) {
+    const stops = safe
+      ? [[0, 114, 178], [86, 180, 233], [240, 228, 66], [230, 159, 0]]
+      : [[30, 58, 110], [46, 230, 166], [255, 176, 32], [255, 93, 115]];
     const x = Math.max(0, Math.min(0.999, t)) * (stops.length - 1);
     const i = x | 0;
     const f = x - i;
@@ -650,11 +716,12 @@
     });
   }
   function drawRegions(v) {
-    drawLabeled(regionC, REGIONS, v.byRegion, REG_C);
+    drawLabeled(regionC, REGIONS, v.byRegion, pal().reg);
   }
+  let topStudioIds = [];
   function drawStudios(v) {
-    const ids = STUDIOS.map((_, i) => i).sort((a, b) => v.byStudio[b] - v.byStudio[a]).slice(0, 8);
-    drawLabeled(studioC, ids.map(i => STUDIOS[i]), ids.map(i => v.byStudio[i]), TYPE_C);
+    topStudioIds = STUDIOS.map((_, i) => i).sort((a, b) => v.byStudio[b] - v.byStudio[a]).slice(0, 8);
+    drawLabeled(studioC, topStudioIds.map(i => STUDIOS[i]), topStudioIds.map(i => v.byStudio[i]), pal().type);
   }
   function draw(v) {
     view = v;
@@ -696,6 +763,15 @@
   function rowEl() {
     const el = document.createElement('div');
     el.className = 'rowline';
+    el.tabIndex = 0;
+    el.setAttribute('role', 'button');
+    el.addEventListener('click', () => openRecord(Number(el.dataset.pos)));
+    el.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openRecord(Number(el.dataset.pos));
+      }
+    });
     rows.appendChild(el);
     return el;
   }
@@ -715,7 +791,9 @@
       const rec = order[start + i];
       el.hidden = false;
       el.style.transform = 'translateY(' + ((start + i) * ROW) + 'px)';
-      el.innerHTML = '<b>' + STUDIOS[studio[rec]] + '</b><span>' + cityName[city[rec]] + '</span><span class="pill" style="--c:' + REG_C[region[rec]] + '">' + REGIONS[region[rec]] + '</span><span class="pill" style="--c:' + TYPE_C[type[rec]] + '">' + TYPES[type[rec]] + '</span><span class="pill" style="--c:' + STAT_C[status[rec]] + '">' + STATUSES[status[rec]] + '</span><span>' + year[rec] + '</span><span>' + money(budget[rec]) + '</span><span>' + fmt.format(Math.round(area[rec])) + ' m²</span><span>' + score[rec] + '</span>';
+      el.dataset.pos = String(start + i);
+      el.setAttribute('aria-label', 'Fiche ' + STUDIOS[studio[rec]] + ', ' + cityName[city[rec]]);
+      el.innerHTML = '<b>' + STUDIOS[studio[rec]] + '</b><span>' + cityName[city[rec]] + '</span><span class="pill" style="--c:' + pal().reg[region[rec]] + '">' + REGIONS[region[rec]] + '</span><span class="pill" style="--c:' + pal().type[type[rec]] + '">' + TYPES[type[rec]] + '</span><span class="pill" style="--c:' + pal().stat[status[rec]] + '">' + STATUSES[status[rec]] + '</span><span>' + year[rec] + '</span><span>' + money(budget[rec]) + '</span><span>' + fmt.format(Math.round(area[rec])) + ' m²</span><span>' + score[rec] + '</span>';
     }
   }
   vview.addEventListener('scroll', paintTable, { passive: true });
@@ -753,6 +831,8 @@
       btn.type = 'button';
       btn.className = 'chip';
       btn.textContent = name;
+      btn.dataset.key = key;
+      btn.dataset.i = String(i);
       btn.style.setProperty('--c', colors[i]);
       btn.setAttribute('aria-pressed', 'true');
       btn.addEventListener('click', () => {
@@ -763,9 +843,9 @@
       host.appendChild(btn);
     });
   }
-  chips(document.getElementById('regions'), REGIONS, 'regions', REG_C);
-  chips(document.getElementById('types'), TYPES, 'types', TYPE_C);
-  chips(document.getElementById('statuses'), STATUSES, 'statuses', STAT_C);
+  chips(document.getElementById('regions'), REGIONS, 'regions', pal().reg);
+  chips(document.getElementById('types'), TYPES, 'types', pal().type);
+  chips(document.getElementById('statuses'), STATUSES, 'statuses', pal().stat);
 
   const y0 = document.getElementById('y0');
   const y1 = document.getElementById('y1');
@@ -832,6 +912,189 @@
     resizeTimer = setTimeout(() => { if (view) draw(view); paintTable(); }, 80);
   });
 
+  const dialog = document.getElementById('dialog');
+  const dlgTitle = document.getElementById('dlg-title');
+  const dlgBody = document.getElementById('dlg-body');
+  const dlgActs = document.getElementById('dlg-acts');
+  let restoreFocus = null;
+  function modalButtons() {
+    return [...dlgActs.querySelectorAll('button')];
+  }
+  function openModal(title, bodyHtml, actions) {
+    restoreFocus = document.activeElement;
+    dlgTitle.textContent = title;
+    dlgBody.innerHTML = bodyHtml;
+    dlgActs.replaceChildren();
+    (actions || []).forEach(action => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = action.label;
+      btn.addEventListener('click', action.run);
+      dlgActs.appendChild(btn);
+    });
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.textContent = 'Fermer';
+    closeBtn.addEventListener('click', closeModal);
+    dlgActs.appendChild(closeBtn);
+    dialog.hidden = false;
+    document.body.style.overflow = 'hidden';
+    modalButtons()[0].focus();
+  }
+  function closeModal() {
+    if (dialog.hidden) return;
+    dialog.hidden = true;
+    document.body.style.overflow = '';
+    const back = restoreFocus;
+    restoreFocus = null;
+    if (back && back.focus) back.focus();
+  }
+  dialog.addEventListener('click', event => { if (event.target === dialog) closeModal(); });
+  dialog.addEventListener('keydown', event => {
+    if (dialog.hidden) return;
+    if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
+    if (event.key !== 'Tab') return;
+    const list = modalButtons();
+    if (!list.length) return;
+    const first = list[0];
+    const last = list[list.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
+  function keepOnly(key, index) {
+    state[key] = 1 << index;
+    document.querySelectorAll('button.chip[data-key="' + key + '"]').forEach(btn => {
+      btn.setAttribute('aria-pressed', String(Number(btn.dataset.i) === index));
+    });
+    closeModal();
+    apply();
+  }
+  function searchName(name) {
+    const input = document.getElementById('q');
+    input.value = name;
+    state.q = fold(name);
+    closeModal();
+    apply();
+    input.focus();
+  }
+  function shareText(n) {
+    const total = view ? view.count : 0;
+    const pct = total ? Math.round(n / Math.max(total, 1) * 100) : 0;
+    return fmt.format(Math.round(n)) + ' opérations, soit ' + pct + ' % de la sélection affichée.';
+  }
+  function openRecord(pos) {
+    if (!Number.isFinite(pos) || pos < 0 || pos >= shown) return;
+    const rec = order[pos];
+    const fields = [
+      ['Atelier', STUDIOS[studio[rec]], 'Cabinet fictif qui porte le projet.'],
+      ['Ville', cityName[city[rec]], 'Ville inventée, rattachée à une région.'],
+      ['Région', REGIONS[region[rec]], 'Europe, Asie, Amériques, Afrique ou Océanie.'],
+      ['Type', TYPES[type[rec]], 'Musée, logement, campus, gare, tour ou paysage.'],
+      ['Statut', STATUSES[status[rec]], 'Livré, chantier, concours ou étude.'],
+      ['Année', String(year[rec]), 'Entre 2015 et 2026.'],
+      ['Budget', money(budget[rec]), 'Montant fictif, en euros.'],
+      ['Surface', fmt.format(Math.round(area[rec])) + ' m²', 'Surface fictive.'],
+      ['Score', String(score[rec]), 'Note inventée de 42 à 99, un peu plus haute si le projet est livré.']
+    ];
+    const html = '<p>Fiche d’une opération qui n’existe pas. Elle sert à lire une ligne du tableau.</p><dl class="kv">'
+      + fields.map(field => '<dt>' + field[0] + '</dt><dd>' + field[1] + '</dd>').join('') + '</dl>';
+    openModal(STUDIOS[studio[rec]] + ' · ' + cityName[city[rec]], html, [
+      { label: 'Voir seulement ' + cityName[city[rec]], run: () => searchName(cityName[city[rec]]) }
+    ]);
+  }
+  document.getElementById('about').addEventListener('click', () => {
+    openModal('Les données', '<p>Atlas ne charge aucun fichier et n’envoie rien. Les 100&nbsp;000 lignes sont inventées dans cette page, toujours avec le même tirage.</p><ul><li><b>Atelier</b> : le cabinet fictif.</li><li><b>Ville et région</b> : le lieu du projet.</li><li><b>Type</b> : musée, logement, campus, gare, tour ou paysage.</li><li><b>Statut</b> : livré, chantier, concours ou étude.</li><li><b>Année</b> : de 2015 à 2026.</li><li><b>Budget</b> : montant fictif en euros.</li><li><b>Surface</b> : mètres carrés fictifs.</li><li><b>Score</b> : note de 42 à 99, un peu plus haute pour un projet livré.</li></ul><p>Une pastille active garde sa catégorie. La désactiver retire ces lignes des diagrammes. Une ligne du tableau ou une barre ouvre une fiche, et le clavier reste dans la fenêtre jusqu’à Fermer ou Échap.</p>', []);
+  });
+  function paintPalette() {
+    document.body.classList.toggle('cvd', cvd);
+    const btn = document.getElementById('cvd');
+    btn.setAttribute('aria-pressed', String(cvd));
+    btn.textContent = cvd ? 'Daltonien actif' : 'Mode daltonien';
+    document.getElementById('leg-budget').style.background = pal().budget;
+    document.getElementById('leg-count').style.background = pal().count;
+    document.querySelectorAll('button.chip').forEach(chip => {
+      const colors = chip.dataset.key === 'regions' ? pal().reg : chip.dataset.key === 'types' ? pal().type : pal().stat;
+      chip.style.setProperty('--c', colors[Number(chip.dataset.i)]);
+    });
+  }
+  document.getElementById('cvd').addEventListener('click', () => {
+    cvd = !cvd;
+    try { localStorage.setItem('atlas-cvd', cvd ? '1' : '0'); } catch (err) {}
+    paintPalette();
+    if (view) draw(view);
+    paintTable();
+  });
+  function barIndex(canvas, event, n) {
+    const rect = canvas.getBoundingClientRect();
+    const y = event.clientY - rect.top;
+    const i = Math.floor((y - 8) / ((rect.height - 8) / n));
+    return i >= 0 && i < n ? i : -1;
+  }
+  barsC.addEventListener('click', event => {
+    const i = barIndex(barsC, event, TYPES.length);
+    if (i < 0 || !view) return;
+    openModal('Type · ' + TYPES[i], '<p>' + shareText(view.byType[i]) + ' Le type décrit la nature du bâtiment, pas son lieu.</p>', [
+      { label: 'Ne garder que ' + TYPES[i], run: () => keepOnly('types', i) }
+    ]);
+  });
+  regionC.addEventListener('click', event => {
+    const i = barIndex(regionC, event, REGIONS.length);
+    if (i < 0 || !view) return;
+    openModal('Région · ' + REGIONS[i], '<p>' + shareText(view.byRegion[i]) + ' La région regroupe les villes fictives de cette partie du monde.</p>', [
+      { label: 'Ne garder que ' + REGIONS[i], run: () => keepOnly('regions', i) }
+    ]);
+  });
+  studioC.addEventListener('click', event => {
+    const i = barIndex(studioC, event, topStudioIds.length);
+    if (i < 0 || !view) return;
+    const name = STUDIOS[topStudioIds[i]];
+    openModal('Atelier · ' + name, '<p>' + shareText(view.byStudio[topStudioIds[i]]) + ' L’atelier est le cabinet fictif qui porte ces opérations.</p>', [
+      { label: 'Voir seulement ' + name, run: () => searchName(name) }
+    ]);
+  });
+  donutC.addEventListener('click', event => {
+    if (!view) return;
+    const rect = donutC.getBoundingClientRect();
+    const cx = rect.width * 0.38;
+    const cy = rect.height * 0.52;
+    const x = event.clientX - rect.left - cx;
+    const y = event.clientY - rect.top - cy;
+    const dist = Math.hypot(x, y);
+    const radius = Math.min(rect.width, rect.height) * 0.32;
+    if (dist < radius - 22 || dist > radius + 22) return;
+    let ang = Math.atan2(y, x) + Math.PI / 2;
+    if (ang < 0) ang += Math.PI * 2;
+    let total = 0;
+    for (let i = 0; i < view.byStatus.length; i++) total += view.byStatus[i];
+    let acc = 0;
+    let picked = STATUSES.length - 1;
+    for (let i = 0; i < STATUSES.length; i++) {
+      acc += total ? view.byStatus[i] / total : 0;
+      if (ang <= acc * Math.PI * 2) { picked = i; break; }
+    }
+    openModal('Statut · ' + STATUSES[picked], '<p>' + shareText(view.byStatus[picked]) + ' Le statut dit où en est le projet fictif.</p>', [
+      { label: 'Ne garder que ' + STATUSES[picked], run: () => keepOnly('statuses', picked) }
+    ]);
+  });
+  heatC.addEventListener('click', event => {
+    if (!view) return;
+    const rect = heatC.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const left = 78;
+    const top = 8;
+    const cw = (rect.width - left - 8) / YEARS;
+    const ch = (rect.height - top - 18) / REGIONS.length;
+    const yi = Math.floor((x - left) / cw);
+    const ri = Math.floor((y - top) / ch);
+    if (yi < 0 || yi >= YEARS || ri < 0 || ri >= REGIONS.length) return;
+    const n = view.heat[ri * YEARS + yi];
+    openModal(REGIONS[ri] + ' · ' + (YEAR0 + yi), '<p>' + shareText(n) + ' Cette case croise une région et une année.</p>', [
+      { label: 'Ne garder que ' + REGIONS[ri], run: () => keepOnly('regions', ri) }
+    ]);
+  });
+
+  paintPalette();
   syncYears();
   apply();
 })();
