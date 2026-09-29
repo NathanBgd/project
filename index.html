@@ -19,6 +19,9 @@
 <meta name="twitter:title" content="Projets Nathan">
 <meta name="twitter:description" content="Projets de Nathan. Nonobendo suit les candidatures en alternance, architecture et design.">
 <title>Projets Nathan</title>
+<script>
+if (location.search.indexOf('accueil=1') !== -1) history.replaceState(null, '', location.pathname);
+</script>
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"WebSite","name":"Projets Nathan","url":"https://nathanbgd.github.io/project/","inLanguage":"fr","description":"Projets de Nathan. Nonobendo suit les candidatures en alternance, architecture et design."}
 </script>
@@ -197,7 +200,7 @@
     <h1>Projets</h1>
     <p class="lead">Choisis un projet.</p>
     <nav class="grid" id="tabs" aria-label="Projets">
-      <a class="card" href="nonobendo/">
+      <a class="card" href="nonobendo/?entre=1">
         <span class="kicker">01</span>
         <strong>Nonobendo</strong>
         <span class="desc">Suivi des candidatures alternance</span>
@@ -212,7 +215,7 @@ const PROJECTS = [
   {
     name: 'Nonobendo',
     text: 'Suivi des candidatures alternance',
-    href: 'nonobendo/'
+    href: 'nonobendo/?entre=1'
   }
 ];
 

@@ -2,6 +2,19 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  if (params.get('entre') === '1') {
+    history.replaceState(null, '', location.pathname);
+    return;
+  }
+  var ref = document.referrer || '';
+  if (/^https:\/\/nathanbgd\.github\.io\/project\/(?:index\.html)?(?:\?[^#]*)?$/.test(ref)) {
+    location.replace('https://nathanbgd.github.io/project/?accueil=1');
+  }
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="description" content="Suivi des candidatures en alternance, architecture et design.">
 <meta name="robots" content="noindex, nofollow">
