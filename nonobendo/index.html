@@ -6,61 +6,153 @@
 <meta name="theme-color" content="#000000">
 <title>Projets</title>
 <style>
-  :root {
-    --bg: #000;
-    --card: #fff;
-    --ink: #111;
-    --muted: #5c5c5c;
-    --orange: #ff5a00;
-  }
+  :root { --orange: #ff5a00; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: var(--bg);
-    color: #fff;
-    font-family: 'Segoe UI', system-ui, sans-serif;
     min-height: 100vh;
+    min-height: 100dvh;
+    color: #fff;
+    font-family: system-ui, "Segoe UI", sans-serif;
+    background: #000;
   }
-  .header {
-    padding: 28px 24px 8px;
-    max-width: 920px;
+  .stage {
+    position: relative;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+    background:
+      radial-gradient(820px 480px at 92% -8%, rgba(255, 90, 0, .62), transparent 58%),
+      radial-gradient(640px 420px at -12% 108%, rgba(255, 255, 255, .2), transparent 56%),
+      radial-gradient(420px 320px at 48% 118%, rgba(255, 90, 0, .22), transparent 60%),
+      linear-gradient(165deg, #1a1a1a 0%, #050505 38%, #000 100%);
   }
-  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }
-  .header h1 span { color: var(--orange); }
-  .header p { color: #cfcfcf; font-size: 14px; margin-top: 8px; max-width: 36rem; line-height: 1.45; }
-  .tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
-    padding: 24px;
-    max-width: 920px;
+  .stage::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, .045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, .045) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse at 70% 0%, #000 10%, transparent 68%);
   }
-  .tab {
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: max(64px, env(safe-area-inset-top)) 28px 56px;
+  }
+  .eyebrow {
+    color: #ff8a3d;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+  }
+  h1 {
+    margin-top: 12px;
+    font-size: clamp(64px, 11vw, 112px);
+    line-height: .86;
+    letter-spacing: -.06em;
+    font-weight: 750;
+    background: linear-gradient(115deg, #fff 8%, #fff 38%, #ffd0b4 68%, var(--orange) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .lead {
+    margin-top: 18px;
+    max-width: 26rem;
+    color: rgba(255, 255, 255, .74);
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 360px));
+    gap: 16px;
+    margin-top: 52px;
+  }
+  .card {
+    position: relative;
     appearance: none;
     text-align: left;
     cursor: pointer;
-    background: var(--card);
-    color: var(--ink);
-    border: 2px solid #fff;
-    border-radius: 0;
-    padding: 18px 18px 16px;
-    min-width: 220px;
-    flex: 1 1 240px;
-    max-width: 340px;
+    color: #fff;
+    min-height: 188px;
+    padding: 22px 22px 20px;
+    border-radius: 22px;
+    border: 1px solid transparent;
+    background:
+      radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, .16), transparent 46%) padding-box,
+      linear-gradient(165deg, #1c1c1c, #070707) padding-box,
+      linear-gradient(140deg, #fff, rgba(255, 90, 0, .35) 42%, var(--orange)) border-box;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .45), 0 0 40px rgba(255, 90, 0, .08);
+    transition: transform .18s ease, box-shadow .18s ease;
   }
-  .tab:hover, .tab:focus-visible {
-    border-color: var(--orange);
+  .card:hover, .card:focus-visible {
+    transform: translateY(-4px);
+    box-shadow: 0 22px 54px rgba(255, 90, 0, .22);
     outline: none;
   }
-  .tab strong { display: block; font-size: 18px; color: var(--orange); margin-bottom: 6px; letter-spacing: -0.02em; }
-  .tab span { display: block; color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .kicker {
+    display: block;
+    color: #ffb088;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .18em;
+  }
+  .card strong {
+    display: block;
+    margin-top: 22px;
+    font-size: 30px;
+    letter-spacing: -.04em;
+    line-height: 1;
+  }
+  .desc {
+    display: block;
+    margin-top: 10px;
+    max-width: 22ch;
+    color: rgba(255, 255, 255, .7);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .go {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(140deg, #fff 0%, #ffe1d0 42%, var(--orange) 100%);
+    color: #111;
+    font-size: 18px;
+    line-height: 1;
+  }
+  @media (max-width: 640px) {
+    main { padding-left: 18px; padding-right: 18px; }
+    .card { min-height: 164px; }
+    .card strong { font-size: 26px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card { transition: none; }
+    .card:hover { transform: none; }
+  }
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>Projets <span>Nathan</span></h1>
-  <p>Choisis un projet.</p>
+<div class="stage">
+  <main>
+    <p class="eyebrow">Nathan</p>
+    <h1>Projets</h1>
+    <p class="lead">Choisis un projet.</p>
+    <div class="grid" id="tabs"></div>
+  </main>
 </div>
-<div class="tabs" id="tabs"></div>
 <script>
 /** Ajoute un objet ici pour afficher un nouveau projet. */
 const PROJECTS = [
@@ -72,15 +164,23 @@ const PROJECTS = [
 ];
 
 const tabs = document.getElementById('tabs');
-PROJECTS.forEach(project => {
+PROJECTS.forEach((project, index) => {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'tab';
+  btn.className = 'card';
+  const kicker = document.createElement('span');
+  kicker.className = 'kicker';
+  kicker.textContent = String(index + 1).padStart(2, '0');
   const title = document.createElement('strong');
   title.textContent = project.name;
   const text = document.createElement('span');
+  text.className = 'desc';
   text.textContent = project.text;
-  btn.append(title, text);
+  const go = document.createElement('span');
+  go.className = 'go';
+  go.setAttribute('aria-hidden', 'true');
+  go.textContent = '→';
+  btn.append(kicker, title, text, go);
   btn.addEventListener('click', () => {
     location.assign(project.href);
   });
