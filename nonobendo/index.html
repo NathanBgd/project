@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Projets</title>
+<style>
+  :root {
+    --bg: #000;
+    --card: #fff;
+    --ink: #111;
+    --muted: #5c5c5c;
+    --orange: #ff5a00;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: #fff;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  .header {
+    padding: 28px 24px 8px;
+    max-width: 920px;
+  }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }
+  .header h1 span { color: var(--orange); }
+  .header p { color: #cfcfcf; font-size: 14px; margin-top: 8px; max-width: 36rem; line-height: 1.45; }
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 24px;
+    max-width: 920px;
+  }
+  .tab {
+    appearance: none;
+    text-align: left;
+    cursor: pointer;
+    background: var(--card);
+    color: var(--ink);
+    border: 2px solid #fff;
+    border-radius: 0;
+    padding: 18px 18px 16px;
+    min-width: 220px;
+    flex: 1 1 240px;
+    max-width: 340px;
+  }
+  .tab:hover, .tab:focus-visible {
+    border-color: var(--orange);
+    outline: none;
+  }
+  .tab strong { display: block; font-size: 18px; color: var(--orange); margin-bottom: 6px; letter-spacing: -0.02em; }
+  .tab span { display: block; color: var(--muted); font-size: 13px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Projets <span>Nathan</span></h1>
+  <p>Choisis un projet.</p>
+</div>
+<div class="tabs" id="tabs"></div>
+<script>
+/** Ajoute un objet ici pour afficher un nouveau projet. */
+const PROJECTS = [
+  {
+    name: 'Nonobendo',
+    text: 'Suivi des candidatures alternance',
+    href: 'suivi.html'
+  }
+];
+
+const tabs = document.getElementById('tabs');
+PROJECTS.forEach(project => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tab';
+  const title = document.createElement('strong');
+  title.textContent = project.name;
+  const text = document.createElement('span');
+  text.textContent = project.text;
+  btn.append(title, text);
+  btn.addEventListener('click', () => {
+    location.assign(project.href);
+  });
+  tabs.appendChild(btn);
+});
+</script>
+</body>
+</html>
