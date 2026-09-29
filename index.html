@@ -134,11 +134,19 @@ if (location.search.indexOf('accueil=1') !== -1) history.replaceState(null, '', 
     outline-offset: 3px;
   }
   @media (hover: hover) and (pointer: fine) {
-    .card:hover {
+    a.card:hover {
       transform: translateY(-4px);
       box-shadow: 0 22px 54px rgba(255, 90, 0, .22);
     }
   }
+  .card.soon {
+    cursor: default;
+    background:
+      linear-gradient(165deg, #141414, #070707) padding-box,
+      linear-gradient(140deg, rgba(255, 255, 255, .35), rgba(255, 90, 0, .25)) border-box;
+    box-shadow: none;
+  }
+  .card.soon strong, .card.soon .desc { color: rgba(255, 255, 255, .55); }
   .kicker {
     display: block;
     color: #ffb088;
@@ -206,6 +214,11 @@ if (location.search.indexOf('accueil=1') !== -1) history.replaceState(null, '', 
         <span class="desc">Suivi des candidatures alternance</span>
         <span class="go" aria-hidden="true">→</span>
       </a>
+      <div class="card soon">
+        <span class="kicker">02</span>
+        <strong>Incoming</strong>
+        <span class="desc">Bientôt</span>
+      </div>
     </nav>
   </main>
 </div>
@@ -216,6 +229,11 @@ const PROJECTS = [
     name: 'Nonobendo',
     text: 'Suivi des candidatures alternance',
     href: 'nonobendo/?entre=1'
+  },
+  {
+    name: 'Incoming',
+    text: 'Bientôt',
+    href: ''
   }
 ];
 
@@ -223,9 +241,9 @@ const tabs = document.getElementById('tabs');
 if (PROJECTS.length !== tabs.children.length) {
   tabs.replaceChildren();
   PROJECTS.forEach((project, index) => {
-    const link = document.createElement('a');
-    link.className = 'card';
-    link.href = project.href;
+    const link = project.href ? document.createElement('a') : document.createElement('div');
+    link.className = project.href ? 'card' : 'card soon';
+    if (project.href) link.href = project.href;
     const kicker = document.createElement('span');
     kicker.className = 'kicker';
     kicker.textContent = String(index + 1).padStart(2, '0');
@@ -234,11 +252,14 @@ if (PROJECTS.length !== tabs.children.length) {
     const text = document.createElement('span');
     text.className = 'desc';
     text.textContent = project.text;
-    const go = document.createElement('span');
-    go.className = 'go';
-    go.setAttribute('aria-hidden', 'true');
-    go.textContent = '→';
-    link.append(kicker, title, text, go);
+    link.append(kicker, title, text);
+    if (project.href) {
+      const go = document.createElement('span');
+      go.className = 'go';
+      go.setAttribute('aria-hidden', 'true');
+      go.textContent = '→';
+      link.append(go);
+    }
     tabs.appendChild(link);
   });
 }
