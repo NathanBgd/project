@@ -214,8 +214,14 @@ if (location.search.indexOf('accueil=1') !== -1) history.replaceState(null, '', 
         <span class="desc">Suivi des candidatures alternance</span>
         <span class="go" aria-hidden="true">→</span>
       </a>
-      <div class="card soon">
+      <a class="card" href="test/">
         <span class="kicker">02</span>
+        <strong>Test</strong>
+        <span class="desc">Filtres, diagrammes, 100 000 lignes</span>
+        <span class="go" aria-hidden="true">→</span>
+      </a>
+      <div class="card soon">
+        <span class="kicker">03</span>
         <strong>Incoming</strong>
         <span class="desc">Bientôt</span>
       </div>
@@ -229,6 +235,11 @@ const PROJECTS = [
     name: 'Nonobendo',
     text: 'Suivi des candidatures alternance',
     href: 'nonobendo/?entre=1'
+  },
+  {
+    name: 'Test',
+    text: 'Filtres, diagrammes, 100 000 lignes',
+    href: 'test/'
   },
   {
     name: 'Incoming',

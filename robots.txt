@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /nonobendo/
+Disallow: /test/
 
 Sitemap: https://nathanbgd.github.io/project/sitemap.xml
 

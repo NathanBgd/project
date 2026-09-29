@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Atlas fictif : 100 000 opérations, filtres et diagrammes animés.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<title>Test — Atlas fictif</title>
+<style>
+  :root { --orange: #ff5a00; --line: rgba(255,255,255,.12); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    min-height: 100vh;
+    min-height: 100dvh;
+    color: #fff;
+    background: #000;
+    font-family: system-ui, "Segoe UI", sans-serif;
+    overflow-x: clip;
+  }
+  .bg {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(720px 420px at 100% -10%, rgba(255,90,0,.45), transparent 60%),
+      radial-gradient(520px 360px at -10% 110%, rgba(255,255,255,.14), transparent 55%),
+      linear-gradient(180deg, #121212, #000 40%);
+  }
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: max(28px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+  .eye { color: #ff8a3d; font-size: 12px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
+  h1 {
+    margin-top: 6px;
+    font-size: clamp(42px, 7vw, 72px);
+    line-height: .9;
+    letter-spacing: -.05em;
+    background: linear-gradient(110deg, #fff 20%, #ffb088 70%, var(--orange));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .meta { color: rgba(255,255,255,.7); font-size: 13px; max-width: 28rem; line-height: 1.45; text-align: right; }
+  .filters, .kpis, .charts { margin-top: 18px; }
+  .filters {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: rgba(255,255,255,.04);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    backdrop-filter: blur(16px);
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row span.lbl { color: rgba(255,255,255,.55); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; min-width: 72px; }
+  button.chip, button.reset, .search {
+    appearance: none;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.2);
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    padding: 8px 12px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  button.chip[aria-pressed="true"] {
+    background: linear-gradient(140deg, #fff, #ffd0b4 40%, var(--orange));
+    color: #111;
+    border-color: transparent;
+    font-weight: 650;
+  }
+  .search { color: #fff; min-width: min(100%, 220px); font-size: 16px; border-radius: 12px; }
+  .search:focus, button.chip:focus-visible, button.reset:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .years { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 180px; }
+  input[type="range"] { flex: 1; accent-color: var(--orange); min-width: 80px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .kpi {
+    padding: 14px 14px 12px;
+    border-radius: 16px;
+    border: 1px solid transparent;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)) padding-box,
+      linear-gradient(140deg, rgba(255,255,255,.7), rgba(255,90,0,.4)) border-box;
+  }
+  .kpi b { display: block; font-size: clamp(22px, 3vw, 32px); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+  .kpi small { color: rgba(255,255,255,.6); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 12px 12px 8px;
+    background: rgba(0,0,0,.35);
+    min-width: 0;
+  }
+  .panel.wide { grid-column: 1 / -1; }
+  .panel h2 { font-size: 13px; font-weight: 650; letter-spacing: .04em; color: rgba(255,255,255,.8); margin-bottom: 6px; }
+  canvas { width: 100%; display: block; touch-action: pan-y; }
+  #area { height: 240px; }
+  #donut, #bars { height: 220px; }
+  #heat { height: 230px; }
+  .tip { min-height: 1.2em; color: #ffb088; font-size: 12px; margin-top: 4px; }
+  .table-panel { margin-top: 10px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: rgba(0,0,0,.4); }
+  .thead, .rowline {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr .8fr .8fr .7fr .55fr .9fr .8fr .5fr;
+    gap: 8px;
+    align-items: center;
+    padding: 0 12px;
+  }
+  .thead { background: #111; border-bottom: 1px solid var(--line); }
+  .thead button {
+    appearance: none; background: none; border: 0; color: rgba(255,255,255,.62);
+    font: inherit; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    text-align: left; padding: 12px 0; cursor: pointer; touch-action: manipulation;
+  }
+  .thead button.on { color: #ff8a3d; }
+  .vview { height: min(420px, 52vh); overflow: auto; -webkit-overflow-scrolling: touch; position: relative; }
+  .rows { position: relative; }
+  .rowline {
+    position: absolute; left: 0; right: 0; height: 44px;
+    font-size: 13px; color: rgba(255,255,255,.88);
+    border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  .rowline b { font-weight: 650; }
+  .empty { padding: 28px 12px; color: rgba(255,255,255,.6); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  @media (max-width: 980px) {
+    .charts { grid-template-columns: 1fr 1fr; }
+    .kpis { grid-template-columns: 1fr 1fr; }
+    .meta { text-align: left; }
+  }
+  @media (max-width: 720px) {
+    .charts { grid-template-columns: 1fr; }
+    .table-panel { overflow-x: auto; }
+    .thead, .rowline { min-width: 860px; }
+    .vview { overflow-x: hidden; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true"></div>
+<main>
+  <header>
+    <div>
+      <p class="eye">Nathan · Test</p>
+      <h1>Atlas</h1>
+    </div>
+    <p class="meta" id="meta">Jeu de données fictif. 100&nbsp;000 opérations générées dans le navigateur, rien n’est envoyé.</p>
+  </header>
+  <section class="filters" aria-label="Filtres">
+    <div class="row">
+      <label class="lbl" for="q">Recherche</label>
+      <input class="search" id="q" type="search" placeholder="Ville ou atelier" autocomplete="off" enterkeyhint="search">
+      <button class="reset" type="button" id="reset">Réinitialiser</button>
+    </div>
+    <div class="row" id="regions"></div>
+    <div class="row" id="types"></div>
+    <div class="row" id="statuses"></div>
+    <div class="row">
+      <span class="lbl">Années</span>
+      <div class="years">
+        <input id="y0" type="range" min="2015" max="2026" value="2015" aria-label="Année de début">
+        <input id="y1" type="range" min="2015" max="2026" value="2026" aria-label="Année de fin">
+        <span id="yr"></span>
+      </div>
+    </div>
+  </section>
+  <section class="kpis" id="kpis" aria-label="Indicateurs"></section>
+  <p class="sr" id="live" aria-live="polite"></p>
+  <section class="charts">
+    <article class="panel wide">
+      <h2>Budget par année</h2>
+      <canvas id="area" width="800" height="240"></canvas>
+      <p class="tip" id="tip">Survole le diagramme.</p>
+    </article>
+    <article class="panel">
+      <h2>Statuts</h2>
+      <canvas id="donut" width="320" height="220"></canvas>
+    </article>
+    <article class="panel">
+      <h2>Typologies</h2>
+      <canvas id="bars" width="420" height="220"></canvas>
+    </article>
+    <article class="panel wide">
+      <h2>Densité région × année</h2>
+      <canvas id="heat" width="1000" height="230"></canvas>
+    </article>
+  </section>
+  <section class="table-panel" aria-label="Opérations">
+    <div class="thead" id="thead"></div>
+    <div class="vview" id="vview">
+      <div class="rows" id="rows"></div>
+      <p class="empty" id="empty" hidden>Aucune opération pour ces filtres.</p>
+    </div>
+  </section>
+</main>
+<script>
+(function () {
+  const N = 100000;
+  const YEAR0 = 2015;
+  const YEARS = 12;
+  const REGIONS = ['Europe', 'Asie', 'Amériques', 'Afrique', 'Océanie'];
+  const TYPES = ['Musée', 'Logement', 'Campus', 'Gare', 'Tour', 'Paysage'];
+  const STATUSES = ['Livré', 'Chantier', 'Concours', 'Étude'];
+  const TONE = ['#ff5a00', '#ffb088', '#ffffff', '#ff8a3d', '#cfcfcf', '#ffd0b4'];
+  const CITIES = [
+    ['Paris','Lyon','Bordeaux','Lille','Nantes','Marseille','Bruxelles','Genève','Lisbonne','Berlin','Milan','Barcelone'],
+    ['Tokyo','Séoul','Singapour','Shanghai','Kyoto','Taipei','Bangkok','Mumbai'],
+    ['Montréal','New York','Mexico','São Paulo','Buenos Aires','Vancouver','Chicago'],
+    ['Dakar','Casablanca','Le Caire','Nairobi','Le Cap','Tunis'],
+    ['Sydney','Melbourne','Auckland','Wellington']
+  ];
+  const STUDIOS = ['Atelier Lumen','Studio Nébula','Cabinet Horizon','Agence Sève','Kolektif Nord','Maison Brume','Atelier Sel','Studio Quai','Forme Vive','Atelier Cendre','Bureau Alta','Studio Marée','Agence Orée','Atelier Pli','Cabinet Ivre','Studio Dune','Atelier Kerne','Agence Voûte','Studio Halte','Cabinet Arpent'];
+  const cityName = [];
+  const cityRegion = [];
+  CITIES.forEach((list, region) => list.forEach(name => { cityName.push(name); cityRegion.push(region); }));
+
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function fold(s) {
+    return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+  function rankOf(names) {
+    const ids = names.map((_, i) => i).sort((a, b) => names[a].localeCompare(names[b], 'fr'));
+    const rank = new Uint8Array(names.length);
+    ids.forEach((id, i) => { rank[id] = i; });
+    return rank;
+  }
+  const foldCity = cityName.map(fold);
+  const foldStudio = STUDIOS.map(fold);
+  const studioRank = rankOf(STUDIOS);
+  const cityRank = rankOf(cityName);
+  const fmt = new Intl.NumberFormat('fr-FR');
+  const fmt1 = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
+
+  const year = new Uint16Array(N);
+  const region = new Uint8Array(N);
+  const type = new Uint8Array(N);
+  const status = new Uint8Array(N);
+  const budget = new Float64Array(N);
+  const area = new Float32Array(N);
+  const score = new Uint8Array(N);
+  const city = new Uint16Array(N);
+  const studio = new Uint8Array(N);
+  const rnd = mulberry32(0xA71A5);
+  const buckets = REGIONS.map(() => []);
+  cityRegion.forEach((r, i) => buckets[r].push(i));
+  for (let i = 0; i < N; i++) {
+    const ri = (rnd() * REGIONS.length) | 0;
+    const bucket = buckets[ri];
+    region[i] = ri;
+    city[i] = bucket[(rnd() * bucket.length) | 0];
+    studio[i] = (rnd() * STUDIOS.length) | 0;
+    type[i] = (rnd() * TYPES.length) | 0;
+    status[i] = (rnd() * STATUSES.length) | 0;
+    year[i] = YEAR0 + ((rnd() * YEARS) | 0);
+    const weight = rnd() * rnd();
+    budget[i] = (0.35 + weight * 220) * 1e6;
+    area[i] = 180 + weight * 90000;
+    score[i] = 42 + ((rnd() * 57) | 0) + (status[i] === 0 ? 4 : 0);
+    if (score[i] > 99) score[i] = 99;
+  }
+
+  const state = {
+    q: '',
+    regions: (1 << REGIONS.length) - 1,
+    types: (1 << TYPES.length) - 1,
+    statuses: (1 << STATUSES.length) - 1,
+    y0: YEAR0,
+    y1: YEAR0 + YEARS - 1,
+    sort: 'budget',
+    dir: -1
+  };
+  const order = new Array(N);
+  let shown = 0;
+  let view = null;
+  let from = null;
+  let anim = 0;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const DUR = reduce ? 0 : 520;
+
+  function emptyView() {
+    return {
+      count: 0, budget: 0, area: 0, score: 0,
+      byYearB: new Float64Array(YEARS),
+      byYearC: new Float64Array(YEARS),
+      byType: new Float64Array(TYPES.length),
+      byStatus: new Float64Array(STATUSES.length),
+      heat: new Float64Array(REGIONS.length * YEARS)
+    };
+  }
+  function cloneView(v) {
+    return {
+      count: v.count, budget: v.budget, area: v.area, score: v.score,
+      byYearB: v.byYearB.slice(),
+      byYearC: v.byYearC.slice(),
+      byType: v.byType.slice(),
+      byStatus: v.byStatus.slice(),
+      heat: v.heat.slice()
+    };
+  }
+  function lerp(a, b, t) {
+    const o = emptyView();
+    o.count = a.count + (b.count - a.count) * t;
+    o.budget = a.budget + (b.budget - a.budget) * t;
+    o.area = a.area + (b.area - a.area) * t;
+    o.score = a.score + (b.score - a.score) * t;
+    for (let i = 0; i < YEARS; i++) {
+      o.byYearB[i] = a.byYearB[i] + (b.byYearB[i] - a.byYearB[i]) * t;
+      o.byYearC[i] = a.byYearC[i] + (b.byYearC[i] - a.byYearC[i]) * t;
+    }
+    for (let i = 0; i < TYPES.length; i++) o.byType[i] = a.byType[i] + (b.byType[i] - a.byType[i]) * t;
+    for (let i = 0; i < STATUSES.length; i++) o.byStatus[i] = a.byStatus[i] + (b.byStatus[i] - a.byStatus[i]) * t;
+    for (let i = 0; i < o.heat.length; i++) o.heat[i] = a.heat[i] + (b.heat[i] - a.heat[i]) * t;
+    return o;
+  }
+
+  function compute() {
+    const q = state.q;
+    let cityOk = null;
+    let studioOk = null;
+    if (q) {
+      cityOk = new Uint8Array(cityName.length);
+      studioOk = new Uint8Array(STUDIOS.length);
+      let any = false;
+      for (let i = 0; i < cityName.length; i++) if (foldCity[i].includes(q)) { cityOk[i] = 1; any = true; }
+      for (let i = 0; i < STUDIOS.length; i++) if (foldStudio[i].includes(q)) { studioOk[i] = 1; any = true; }
+      if (!any) {
+        shown = 0;
+        return emptyView();
+      }
+    }
+    const next = emptyView();
+    const y0 = state.y0;
+    const y1 = state.y1;
+    let n = 0;
+    for (let i = 0; i < N; i++) {
+      const y = year[i];
+      if (y < y0 || y > y1) continue;
+      if ((state.regions & (1 << region[i])) === 0) continue;
+      if ((state.types & (1 << type[i])) === 0) continue;
+      if ((state.statuses & (1 << status[i])) === 0) continue;
+      if (cityOk && !cityOk[city[i]] && !studioOk[studio[i]]) continue;
+      const yi = y - YEAR0;
+      next.byYearB[yi] += budget[i];
+      next.byYearC[yi]++;
+      next.byType[type[i]]++;
+      next.byStatus[status[i]]++;
+      next.heat[region[i] * YEARS + yi]++;
+      next.budget += budget[i];
+      next.area += area[i];
+      next.score += score[i];
+      order[n++] = i;
+    }
+    shown = n;
+    next.count = n;
+    const key = state.sort;
+    const dir = state.dir;
+    order.length = n;
+    if (n > 1) {
+      order.sort(function (a, b) {
+        let d = 0;
+        if (key === 'budget') d = budget[a] - budget[b];
+        else if (key === 'area') d = area[a] - area[b];
+        else if (key === 'score') d = score[a] - score[b];
+        else if (key === 'year') d = year[a] - year[b];
+        else if (key === 'studio') d = studioRank[studio[a]] - studioRank[studio[b]];
+        else if (key === 'city') d = cityRank[city[a]] - cityRank[city[b]];
+        else if (key === 'region') d = region[a] - region[b];
+        else if (key === 'type') d = type[a] - type[b];
+        else d = status[a] - status[b];
+        if (d === 0) d = a - b;
+        return d * dir;
+      });
+    }
+    return next;
+  }
+
+  const kpis = document.getElementById('kpis');
+  const kpiEls = ['Opérations', 'Budget', 'Surface', 'Score moyen'].map(label => {
+    const el = document.createElement('article');
+    el.className = 'kpi';
+    el.innerHTML = '<small></small><b>0</b>';
+    el.querySelector('small').textContent = label;
+    kpis.appendChild(el);
+    return el.querySelector('b');
+  });
+  const tip = document.getElementById('tip');
+  const live = document.getElementById('live');
+  const yr = document.getElementById('yr');
+  const areaC = document.getElementById('area');
+  const donutC = document.getElementById('donut');
+  const barsC = document.getElementById('bars');
+  const heatC = document.getElementById('heat');
+
+  function money(n) {
+    if (n >= 1e9) return fmt1.format(n / 1e9) + ' Md€';
+    if (n >= 1e6) return fmt1.format(n / 1e6) + ' M€';
+    return fmt.format(Math.round(n)) + ' €';
+  }
+  function paintKpis(v) {
+    const avg = v.count ? v.score / v.count : 0;
+    const texts = [fmt.format(Math.round(v.count)), money(v.budget), fmt.format(Math.round(v.area)) + ' m²', fmt1.format(avg)];
+    for (let i = 0; i < 4; i++) kpiEls[i].textContent = texts[i];
+  }
+
+  function ctxOf(canvas) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, canvas.clientWidth);
+    const h = Math.max(1, canvas.clientHeight);
+    if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+    }
+    const c = canvas.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    return { c, w, h };
+  }
+  function maxOf(arr) {
+    let m = 0;
+    for (let i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i];
+    return m || 1;
+  }
+  function drawArea(v) {
+    const { c, w, h } = ctxOf(areaC);
+    const pad = { l: 8, r: 8, t: 12, b: 22 };
+    const iw = w - pad.l - pad.r;
+    const ih = h - pad.t - pad.b;
+    const max = maxOf(v.byYearB);
+    c.strokeStyle = 'rgba(255,255,255,.08)';
+    c.lineWidth = 1;
+    for (let g = 0; g < 4; g++) {
+      const y = pad.t + ih * g / 3;
+      c.beginPath(); c.moveTo(pad.l, y); c.lineTo(w - pad.r, y); c.stroke();
+    }
+    const pts = [];
+    for (let i = 0; i < YEARS; i++) {
+      const x = pad.l + (YEARS === 1 ? iw / 2 : iw * i / (YEARS - 1));
+      const y = pad.t + ih * (1 - v.byYearB[i] / max);
+      pts.push([x, y]);
+    }
+    const grad = c.createLinearGradient(0, pad.t, 0, pad.t + ih);
+    grad.addColorStop(0, 'rgba(255,90,0,.55)');
+    grad.addColorStop(1, 'rgba(255,90,0,0)');
+    c.beginPath();
+    c.moveTo(pts[0][0], pad.t + ih);
+    pts.forEach(p => c.lineTo(p[0], p[1]));
+    c.lineTo(pts[pts.length - 1][0], pad.t + ih);
+    c.closePath();
+    c.fillStyle = grad;
+    c.fill();
+    c.beginPath();
+    pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]));
+    c.strokeStyle = '#ff5a00';
+    c.lineWidth = 2;
+    c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.55)';
+    c.font = '11px system-ui, sans-serif';
+    c.textAlign = 'center';
+    for (let i = 0; i < YEARS; i += 2) c.fillText(String(YEAR0 + i), pts[i][0], h - 6);
+  }
+  function drawDonut(v) {
+    const { c, w, h } = ctxOf(donutC);
+    const cx = w * 0.38;
+    const cy = h * 0.52;
+    const r = Math.min(w, h) * 0.32;
+    let total = 0;
+    for (let i = 0; i < v.byStatus.length; i++) total += v.byStatus[i];
+    let a0 = -Math.PI / 2;
+    STATUSES.forEach((name, i) => {
+      const part = total ? v.byStatus[i] / total : 0;
+      const a1 = a0 + Math.PI * 2 * part;
+      c.beginPath();
+      c.strokeStyle = TONE[i];
+      c.lineWidth = 16;
+      c.arc(cx, cy, r, a0, a1);
+      c.stroke();
+      a0 = a1;
+      c.fillStyle = TONE[i];
+      c.fillRect(w * 0.68, 28 + i * 28, 8, 8);
+      c.fillStyle = 'rgba(255,255,255,.8)';
+      c.font = '12px system-ui, sans-serif';
+      c.textAlign = 'left';
+      c.fillText(name, w * 0.68 + 14, 36 + i * 28);
+    });
+    c.fillStyle = '#fff';
+    c.font = '700 18px system-ui, sans-serif';
+    c.textAlign = 'center';
+    c.fillText(fmt.format(Math.round(v.count)), cx, cy + 4);
+  }
+  function drawBars(v) {
+    const { c, w, h } = ctxOf(barsC);
+    const max = maxOf(v.byType);
+    const row = (h - 8) / TYPES.length;
+    c.font = '12px system-ui, sans-serif';
+    c.textBaseline = 'middle';
+    TYPES.forEach((name, i) => {
+      const y = 8 + row * i + row / 2;
+      const bw = (w - 92) * (v.byType[i] / max);
+      c.fillStyle = 'rgba(255,255,255,.65)';
+      c.textAlign = 'left';
+      c.fillText(name, 0, y);
+      c.fillStyle = TONE[i];
+      c.fillRect(78, y - 6, Math.max(0, bw), 12);
+    });
+  }
+  function drawHeat(v) {
+    const { c, w, h } = ctxOf(heatC);
+    const left = 78;
+    const top = 8;
+    const cw = (w - left - 8) / YEARS;
+    const ch = (h - top - 18) / REGIONS.length;
+    const max = maxOf(v.heat);
+    c.font = '11px system-ui, sans-serif';
+    c.textAlign = 'right';
+    c.textBaseline = 'middle';
+    for (let r = 0; r < REGIONS.length; r++) {
+      c.fillStyle = 'rgba(255,255,255,.65)';
+      c.fillText(REGIONS[r], left - 8, top + ch * r + ch / 2);
+      for (let y = 0; y < YEARS; y++) {
+        const val = v.heat[r * YEARS + y] / max;
+        c.fillStyle = 'rgba(255,90,0,' + (0.08 + val * 0.92) + ')';
+        c.fillRect(left + cw * y + 1, top + ch * r + 1, cw - 2, ch - 2);
+      }
+    }
+    c.fillStyle = 'rgba(255,255,255,.5)';
+    c.textAlign = 'center';
+    c.textBaseline = 'alphabetic';
+    for (let y = 0; y < YEARS; y += 2) c.fillText(String(YEAR0 + y), left + cw * y + cw / 2, h - 2);
+  }
+  function draw(v) {
+    view = v;
+    paintKpis(v);
+    drawArea(v);
+    drawDonut(v);
+    drawBars(v);
+    drawHeat(v);
+  }
+  function animateTo(next) {
+    const start = view ? cloneView(view) : next;
+    const t0 = performance.now();
+    cancelAnimationFrame(anim);
+    if (DUR === 0) { draw(next); return; }
+    const step = now => {
+      const t = Math.min(1, (now - t0) / DUR);
+      const e = 1 - Math.pow(1 - t, 3);
+      draw(lerp(start, next, e));
+      if (t < 1) anim = requestAnimationFrame(step);
+    };
+    anim = requestAnimationFrame(step);
+  }
+
+  areaC.addEventListener('pointermove', event => {
+    if (!view) return;
+    const rect = areaC.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const i = Math.max(0, Math.min(YEARS - 1, Math.round(x / rect.width * (YEARS - 1))));
+    tip.textContent = (YEAR0 + i) + ' · ' + money(view.byYearB[i]) + ' · ' + fmt.format(Math.round(view.byYearC[i])) + ' opérations';
+  });
+
+  const ROW = 44;
+  const vview = document.getElementById('vview');
+  const rows = document.getElementById('rows');
+  const empty = document.getElementById('empty');
+  const pool = [];
+  function rowEl() {
+    const el = document.createElement('div');
+    el.className = 'rowline';
+    rows.appendChild(el);
+    return el;
+  }
+  function paintTable() {
+    const height = shown * ROW;
+    rows.style.height = height + 'px';
+    empty.hidden = shown !== 0;
+    const scroll = vview.scrollTop;
+    const vis = Math.ceil(vview.clientHeight / ROW) + 10;
+    const start = Math.max(0, (scroll / ROW | 0) - 4);
+    const end = Math.min(shown, start + vis);
+    const need = end - start;
+    while (pool.length < need) pool.push(rowEl());
+    for (let i = 0; i < pool.length; i++) {
+      const el = pool[i];
+      if (i >= need) { el.hidden = true; continue; }
+      const rec = order[start + i];
+      el.hidden = false;
+      el.style.transform = 'translateY(' + ((start + i) * ROW) + 'px)';
+      el.innerHTML = '<b>' + STUDIOS[studio[rec]] + '</b><span>' + cityName[city[rec]] + '</span><span>' + REGIONS[region[rec]] + '</span><span>' + TYPES[type[rec]] + '</span><span>' + STATUSES[status[rec]] + '</span><span>' + year[rec] + '</span><span>' + money(budget[rec]) + '</span><span>' + fmt.format(Math.round(area[rec])) + ' m²</span><span>' + score[rec] + '</span>';
+    }
+  }
+  vview.addEventListener('scroll', paintTable, { passive: true });
+
+  const COLS = [
+    ['studio', 'Atelier'], ['city', 'Ville'], ['region', 'Région'], ['type', 'Type'],
+    ['status', 'Statut'], ['year', 'Année'], ['budget', 'Budget'], ['area', 'Surface'], ['score', 'Score']
+  ];
+  const thead = document.getElementById('thead');
+  COLS.forEach(([key, label]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.key = key;
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      if (state.sort === key) state.dir *= -1;
+      else { state.sort = key; state.dir = key === 'studio' || key === 'city' ? 1 : -1; }
+      apply();
+    });
+    thead.appendChild(btn);
+  });
+  function markSort() {
+    thead.querySelectorAll('button').forEach(btn => {
+      btn.classList.toggle('on', btn.dataset.key === state.sort);
+    });
+  }
+
+  function chips(host, names, key) {
+    const label = document.createElement('span');
+    label.className = 'lbl';
+    label.textContent = host.id === 'regions' ? 'Régions' : host.id === 'types' ? 'Types' : 'Statuts';
+    host.appendChild(label);
+    names.forEach((name, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chip';
+      btn.textContent = name;
+      btn.setAttribute('aria-pressed', 'true');
+      btn.addEventListener('click', () => {
+        state[key] ^= (1 << i);
+        btn.setAttribute('aria-pressed', String((state[key] & (1 << i)) !== 0));
+        apply();
+      });
+      host.appendChild(btn);
+    });
+  }
+  chips(document.getElementById('regions'), REGIONS, 'regions');
+  chips(document.getElementById('types'), TYPES, 'types');
+  chips(document.getElementById('statuses'), STATUSES, 'statuses');
+
+  const y0 = document.getElementById('y0');
+  const y1 = document.getElementById('y1');
+  function syncYears() {
+    let a = Number(y0.value);
+    let b = Number(y1.value);
+    if (a > b) { const t = a; a = b; b = t; }
+    state.y0 = a;
+    state.y1 = b;
+    yr.textContent = a + ' – ' + b;
+  }
+  y0.addEventListener('input', () => { syncYears(); apply(); });
+  y1.addEventListener('input', () => { syncYears(); apply(); });
+  let qTimer = 0;
+  document.getElementById('q').addEventListener('input', event => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => {
+      state.q = fold(event.target.value.trim());
+      apply();
+    }, 90);
+  });
+  document.getElementById('reset').addEventListener('click', () => {
+    state.q = '';
+    state.regions = (1 << REGIONS.length) - 1;
+    state.types = (1 << TYPES.length) - 1;
+    state.statuses = (1 << STATUSES.length) - 1;
+    state.y0 = YEAR0;
+    state.y1 = YEAR0 + YEARS - 1;
+    state.sort = 'budget';
+    state.dir = -1;
+    document.getElementById('q').value = '';
+    y0.value = String(YEAR0);
+    y1.value = String(YEAR0 + YEARS - 1);
+    document.querySelectorAll('button.chip').forEach(btn => btn.setAttribute('aria-pressed', 'true'));
+    syncYears();
+    apply();
+  });
+
+  function apply() {
+    const next = compute();
+    markSort();
+    syncYears();
+    vview.scrollTop = 0;
+    paintTable();
+    animateTo(next);
+    const avg = next.count ? next.score / next.count : 0;
+    live.textContent = fmt.format(next.count) + ' opérations, budget ' + money(next.budget) + ', score moyen ' + fmt1.format(avg);
+  }
+
+  let resizeTimer = 0;
+  addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (view) draw(view); paintTable(); }, 80);
+  });
+
+  syncYears();
+  apply();
+})();
+</script>
+</body>
+</html>
