@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /nonobendo/suivi.html
+Disallow: /nonobendo/l.html
+Disallow: /nonobendo/track.html
+
+Sitemap: https://nathanbgd.github.io/project/sitemap.xml

@@ -3,17 +3,36 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Projets de Nathan. Nonobendo suit les candidatures en alternance, architecture et design.">
+<meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#000000">
-<title>Projets</title>
+<meta name="color-scheme" content="dark">
+<meta name="format-detection" content="telephone=no">
+<link rel="canonical" href="https://nathanbgd.github.io/project/nonobendo/">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:site_name" content="Projets Nathan">
+<meta property="og:title" content="Projets Nathan">
+<meta property="og:description" content="Projets de Nathan. Nonobendo suit les candidatures en alternance, architecture et design.">
+<meta property="og:url" content="https://nathanbgd.github.io/project/nonobendo/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Projets Nathan">
+<meta name="twitter:description" content="Projets de Nathan. Nonobendo suit les candidatures en alternance, architecture et design.">
+<title>Projets Nathan</title>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","name":"Projets Nathan","url":"https://nathanbgd.github.io/project/nonobendo/","inLanguage":"fr","description":"Projets de Nathan. Nonobendo suit les candidatures en alternance, architecture et design."}
+</script>
 <style>
   :root { --orange: #ff5a00; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body {
     min-height: 100vh;
     min-height: 100dvh;
     color: #fff;
     font-family: system-ui, "Segoe UI", sans-serif;
     background: #000;
+    overflow-x: clip;
   }
   .stage {
     position: relative;
@@ -35,6 +54,7 @@
       linear-gradient(rgba(255, 255, 255, .045) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 255, 255, .045) 1px, transparent 1px);
     background-size: 64px 64px;
+    -webkit-mask-image: radial-gradient(ellipse at 70% 0%, #000 10%, transparent 68%);
     mask-image: radial-gradient(ellipse at 70% 0%, #000 10%, transparent 68%);
   }
   main {
@@ -42,7 +62,11 @@
     z-index: 1;
     max-width: 980px;
     margin: 0 auto;
-    padding: max(64px, env(safe-area-inset-top)) 28px 56px;
+    padding:
+      max(48px, calc(env(safe-area-inset-top) + 28px))
+      max(18px, env(safe-area-inset-right))
+      max(40px, calc(env(safe-area-inset-bottom) + 28px))
+      max(18px, env(safe-area-inset-left));
   }
   .eyebrow {
     color: #ff8a3d;
@@ -56,11 +80,17 @@
     font-size: clamp(64px, 11vw, 112px);
     line-height: .86;
     letter-spacing: -.06em;
-    font-weight: 750;
-    background: linear-gradient(115deg, #fff 8%, #fff 38%, #ffd0b4 68%, var(--orange) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    font-weight: 700;
+    color: #fff;
+    overflow-wrap: anywhere;
+  }
+  @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    h1 {
+      background: linear-gradient(115deg, #fff 8%, #fff 38%, #ffd0b4 68%, var(--orange) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
   }
   .lead {
     margin-top: 18px;
@@ -78,9 +108,13 @@
   .card {
     position: relative;
     appearance: none;
+    display: block;
+    text-decoration: none;
     text-align: left;
     cursor: pointer;
     color: #fff;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
     min-height: 188px;
     padding: 22px 22px 20px;
     border-radius: 22px;
@@ -92,10 +126,15 @@
     box-shadow: 0 18px 50px rgba(0, 0, 0, .45), 0 0 40px rgba(255, 90, 0, .08);
     transition: transform .18s ease, box-shadow .18s ease;
   }
-  .card:hover, .card:focus-visible {
-    transform: translateY(-4px);
-    box-shadow: 0 22px 54px rgba(255, 90, 0, .22);
-    outline: none;
+  .card:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 22px 54px rgba(255, 90, 0, .22);
+    }
   }
   .kicker {
     display: block;
@@ -123,8 +162,8 @@
     position: absolute;
     right: 16px;
     bottom: 16px;
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
     border-radius: 999px;
     display: grid;
     place-items: center;
@@ -134,9 +173,16 @@
     line-height: 1;
   }
   @media (max-width: 640px) {
-    main { padding-left: 18px; padding-right: 18px; }
+    h1 { font-size: clamp(46px, 16vw, 72px); letter-spacing: -.05em; }
+    .grid { grid-template-columns: 1fr; margin-top: 36px; }
     .card { min-height: 164px; }
     .card strong { font-size: 26px; }
+  }
+  @media (max-width: 380px) {
+    h1 { font-size: 44px; }
+    .lead { font-size: 15px; }
+    .card { padding: 18px 16px 16px; border-radius: 18px; }
+    .card strong { font-size: 24px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .card { transition: none; }
@@ -150,11 +196,18 @@
     <p class="eyebrow">Nathan</p>
     <h1>Projets</h1>
     <p class="lead">Choisis un projet.</p>
-    <div class="grid" id="tabs"></div>
+    <nav class="grid" id="tabs" aria-label="Projets">
+      <a class="card" href="suivi.html">
+        <span class="kicker">01</span>
+        <strong>Nonobendo</strong>
+        <span class="desc">Suivi des candidatures alternance</span>
+        <span class="go" aria-hidden="true">→</span>
+      </a>
+    </nav>
   </main>
 </div>
 <script>
-/** Ajoute un objet ici pour afficher un nouveau projet. */
+/** Ajoute un objet ici pour afficher un nouveau projet. Le lien HTML ci-dessus reste lisible sans JavaScript. */
 const PROJECTS = [
   {
     name: 'Nonobendo',
@@ -164,28 +217,28 @@ const PROJECTS = [
 ];
 
 const tabs = document.getElementById('tabs');
-PROJECTS.forEach((project, index) => {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'card';
-  const kicker = document.createElement('span');
-  kicker.className = 'kicker';
-  kicker.textContent = String(index + 1).padStart(2, '0');
-  const title = document.createElement('strong');
-  title.textContent = project.name;
-  const text = document.createElement('span');
-  text.className = 'desc';
-  text.textContent = project.text;
-  const go = document.createElement('span');
-  go.className = 'go';
-  go.setAttribute('aria-hidden', 'true');
-  go.textContent = '→';
-  btn.append(kicker, title, text, go);
-  btn.addEventListener('click', () => {
-    location.assign(project.href);
+if (PROJECTS.length !== tabs.children.length) {
+  tabs.replaceChildren();
+  PROJECTS.forEach((project, index) => {
+    const link = document.createElement('a');
+    link.className = 'card';
+    link.href = project.href;
+    const kicker = document.createElement('span');
+    kicker.className = 'kicker';
+    kicker.textContent = String(index + 1).padStart(2, '0');
+    const title = document.createElement('strong');
+    title.textContent = project.name;
+    const text = document.createElement('span');
+    text.className = 'desc';
+    text.textContent = project.text;
+    const go = document.createElement('span');
+    go.className = 'go';
+    go.setAttribute('aria-hidden', 'true');
+    go.textContent = '→';
+    link.append(kicker, title, text, go);
+    tabs.appendChild(link);
   });
-  tabs.appendChild(btn);
-});
+}
 </script>
 </body>
 </html>

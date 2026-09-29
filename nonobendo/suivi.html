@@ -3,8 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="Suivi des candidatures en alternance, architecture et design.">
+<meta name="robots" content="noindex, nofollow">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="theme-color" content="#0f1117">
+<meta name="color-scheme" content="dark">
 <title>Suivi Candidatures Alternance — Architecture & Design</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
@@ -26,7 +29,8 @@
     --text3: #64748b;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; }
 
   /* ─── HEADER ─── */
   .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 100; }
@@ -236,8 +240,12 @@
     .stat { min-width: calc(50% - 4px); max-width: none; flex: 1 1 calc(50% - 4px); padding: 10px 8px; }
     .stat .num { font-size: 18px; }
     .stat .lbl { font-size: 10px; white-space: normal; line-height: 1.25; }
-    .table-wrap { -webkit-overflow-scrolling: touch; padding-bottom: 24px; }
+    .table-wrap { -webkit-overflow-scrolling: touch; padding-bottom: max(24px, env(safe-area-inset-bottom)); overscroll-behavior-x: contain; }
     #mainTable { min-width: 960px; }
+    .email-input, .note-input, .date-input, .sel-statut,
+    .form-group input, .form-group select, .form-group textarea { font-size: 16px; }
+    .header h1 { overflow-wrap: anywhere; }
+    .btn, .export-btn, .stat { touch-action: manipulation; }
     .modal-overlay { padding: 12px 8px; align-items: stretch; }
     .modal, .modal.modal-lg { width: 100%; max-width: 100%; border-radius: 10px; padding: 16px; }
     .campaign-list { max-height: 40vh; }
@@ -250,6 +258,11 @@
     .del-btn { min-width: 40px; min-height: 40px; }
     .flash { left: 12px; right: 12px; transform: none; bottom: 16px; text-align: center; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 380px) {
+    .header-actions .btn, .header-actions .export-btn { flex-basis: 100%; }
+    .filters select { flex-basis: 100%; }
+    .stat .lbl { font-size: 9px; }
   }
 </style>
 </head>
@@ -1564,7 +1577,7 @@ function getLinkBase() {
   if (location.protocol.startsWith('http') && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
     return location.href.replace(/[^/]*$/, '');
   }
-  return 'https://nathanbgd.github.io/project/nonobendo/';
+  return 'https://nathanbgd.github.io/nonobendo/';
 }
 
 function allClickStores() {
