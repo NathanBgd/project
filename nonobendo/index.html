@@ -1643,6 +1643,11 @@ function getLinkBase() {
   return configuredBase() || defaultLinkBase();
 }
 
+function prettyLinkBase() {
+  const base = getLinkBase().replace(/nonobendo\/?$/, '');
+  return base.endsWith('/') ? base : base + '/';
+}
+
 function refreshTrackPreview() {
   const el = document.getElementById('camp-track-preview');
   if (!el) return;
@@ -1657,9 +1662,7 @@ function refreshTrackPreview() {
     el.appendChild(document.createTextNode('Indique le site à suivre pour préparer le lien.'));
     return;
   }
-  const typed = (document.getElementById('camp-track-base') || {}).value || '';
-  const custom = normalizeBase(typed);
-  const shown = (custom || defaultLinkBase()) + 'cv/atelier-dupont-k7m2xq';
+  const shown = prettyLinkBase() + 'cv/atelier-dupont-k7m2xq';
   el.appendChild(document.createTextNode(shown));
   el.appendChild(document.createElement('br'));
   const site = document.createElement('span');
@@ -1747,7 +1750,7 @@ async function buildQuietLink(storeId, companyId, targetUrl, companyName) {
   if (!/^https?:\/\//i.test(dest)) dest = 'https://' + dest;
 
   const slug = await publishPrettyLink(storeId, companyId, dest, companyName);
-  if (slug) return getLinkBase() + 'cv/' + slug;
+  if (slug) return prettyLinkBase() + 'cv/' + slug;
 
   const compact = getLinkBase() + 'l?d=' + packCompact(storeId, companyId, dest);
   if (configuredBase()) return compact;
