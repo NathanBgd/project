@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Portfolio</title>
+<style>
+  html, body { margin: 0; background: #fff; color: #111; font: 16px system-ui, sans-serif; }
+  main { display: none; padding: 28px; }
+  main.on { display: block; }
+  a { color: #111; }
+</style>
+</head>
+<body>
+<main id="miss">
+  <p>Page introuvable.</p>
+  <p><a id="home" href="/">Accueil</a></p>
+</main>
+<script>
+(async function () {
+  var home = /\/project(\/|$)/.test(location.pathname) ? '/project/' : '/';
+  document.getElementById('home').href = home;
+
+  function fromB64(s) {
+    s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    try { return decodeURIComponent(escape(atob(s))); } catch (e) { return ''; }
+  }
+
+  var match = location.pathname.match(/\/cv\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/);
+  if (!match) {
+    document.title = 'Page introuvable';
+    document.getElementById('miss').className = 'on';
+    return;
+  }
+
+  var slug = match[1];
+  var code = slug.slice(-6);
+  if (slug.length < 8 || slug.charAt(slug.length - 7) !== '-' || !/^[a-z0-9]{6}$/.test(code)) {
+    document.getElementById('miss').className = 'on';
+    return;
+  }
+
+  var data = null;
+  try {
+    var res = await Promise.race([
+      fetch('https://keyvalue.immanuel.co/api/KeyVal/GetValue/m61nlk0q/q' + encodeURIComponent(slug), { cache: 'no-store', mode: 'cors' }),
+      new Promise(function (_, rej) { setTimeout(function () { rej(new Error('t')); }, 8000); })
+    ]);
+    if (res.ok) {
+      var text = (await res.text()).trim();
+      if (text && text !== '""') {
+        var packed = JSON.parse(text);
+        data = JSON.parse(fromB64(packed));
+      }
+    }
+  } catch (e) {}
+
+  if (!data || data.k !== code || !/^https?:\/\//i.test(data.u || '')) {
+    document.getElementById('miss').className = 'on';
+    return;
+  }
+
+  var now = new Date().toISOString();
+  var store = data.s || '';
+  var cid = String(data.c || '');
+  if (store && cid && String(store).indexOf('nb-') === 0) {
+    try {
+      await Promise.race([
+        fetch('https://ntfy.sh/' + encodeURIComponent(store), {
+          method: 'POST',
+          headers: { Title: 'c', 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ c: cid, last: now })
+        }),
+        new Promise(function (r) { setTimeout(r, 1200); })
+      ]);
+    } catch (e2) {}
+  }
+  location.replace(data.u);
+})();
+</script>
+</body>
+</html>

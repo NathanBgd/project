@@ -449,7 +449,7 @@
         <input type="url" id="camp-track-base" placeholder="https://noemie-mauquet-portfolio.fr" autocomplete="off" spellcheck="false" inputmode="url">
       </div>
     </div>
-    <p class="track-note">Le mail affiche cette adresse, suivie de <code>/l?d=…</code>. Elle doit ouvrir cette page, sinon le clic n’est pas compté. Laisse vide pour un lien court automatique.</p>
+    <p class="track-note">Chaque entreprise reçoit une page à son nom, par exemple <code>https://noemie-mauquet.fr/cv/atelier-dupont-k7m2xq</code>. Le domaine doit ouvrir ce site, sinon le clic n’est pas compté.</p>
     <div class="form-row">
       <div class="form-group" style="flex:2">
         <label for="camp-link">Lien du site à suivre</label>
@@ -1110,6 +1110,7 @@ function resetAllStats() {
   const meta = {
     senderEmail: prevMeta.senderEmail || '',
     pagesBase: prevMeta.pagesBase || '',
+    linkSlugs: prevMeta.linkSlugs || {},
     gmailAuthUser: prevMeta.gmailAuthUser || '0',
     gmailAuthUserAt: prevMeta.gmailAuthUserAt || 0,
     clickStoreId: prevMeta.clickStoreId || '',
@@ -1658,8 +1659,8 @@ function refreshTrackPreview() {
   }
   const typed = (document.getElementById('camp-track-base') || {}).value || '';
   const custom = normalizeBase(typed);
-  const shown = (custom || defaultLinkBase()) + 'l?d=…';
-  el.appendChild(document.createTextNode(custom ? shown : shown + ' (raccourci à l’envoi)'));
+  const shown = (custom || defaultLinkBase()) + 'cv/atelier-dupont-k7m2xq';
+  el.appendChild(document.createTextNode(shown));
   el.appendChild(document.createElement('br'));
   const site = document.createElement('span');
   site.textContent = 'Site ouvert ensuite : ' + dest;
@@ -1700,6 +1701,37 @@ function toB64url(str) {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+function linkCode(storeId, companyId, dest) {
+  const n = parseInt(checksumOf(String(storeId) + '\t' + String(companyId) + '\t' + dest).slice(0, 8), 16);
+  return n.toString(36).padStart(6, '0').slice(-6);
+}
+
+function linkSlug(name, companyId, code) {
+  const base = String(name || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  return (base || ('c' + String(companyId).replace(/[^a-z0-9]+/gi, '').slice(0, 12).toLowerCase())) + '-' + code;
+}
+
+async function publishPrettyLink(storeId, companyId, dest, companyName) {
+  const code = linkCode(storeId, companyId, dest);
+  const slug = linkSlug(companyName, companyId, code);
+  const payload = toB64url(JSON.stringify({ s: storeId, c: String(companyId), u: dest, k: code }));
+  try {
+    await Promise.race([
+      kvPut('q' + slug, payload),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('t')), 8000))
+    ]);
+  } catch (e) {
+    return '';
+  }
+  if (!userData._meta) userData._meta = {};
+  if (!userData._meta.linkSlugs) userData._meta.linkSlugs = {};
+  userData._meta.linkSlugs[String(companyId)] = slug;
+  saveData();
+  return slug;
+}
+
 function packCompact(storeId, companyId, dest) {
   const s = String(storeId).replace(/^nb-/, '');
   const c = String(companyId).replace(/^custom_/, '*');
@@ -1710,9 +1742,12 @@ function packCompact(storeId, companyId, dest) {
 }
 
 /** Lien du mail : autonome, identique quel que soit l’appareil. */
-async function buildQuietLink(storeId, companyId, targetUrl) {
+async function buildQuietLink(storeId, companyId, targetUrl, companyName) {
   let dest = (targetUrl || '').trim();
   if (!/^https?:\/\//i.test(dest)) dest = 'https://' + dest;
+
+  const slug = await publishPrettyLink(storeId, companyId, dest, companyName);
+  if (slug) return getLinkBase() + 'cv/' + slug;
 
   const compact = getLinkBase() + 'l?d=' + packCompact(storeId, companyId, dest);
   if (configuredBase()) return compact;
@@ -1887,7 +1922,7 @@ async function sendCampaign() {
     if (withLink) {
       for (let i = 0; i < targets.length; i++) {
         const t = targets[i];
-        const quiet = await buildQuietLink(storeId, t.id, linkRaw);
+        const quiet = await buildQuietLink(storeId, t.id, linkRaw, t.nom);
         const body = injectLinkInBody(bodyTpl, quiet);
         const item = makeGmailItem(t.nom, { to: t.email, subject, body });
         if (!tapMode && assignPopup(popups[i], item.primary)) opened++;
@@ -2260,13 +2295,14 @@ function snapshotState(src) {
   out._campaigns = Array.isArray(data._campaigns) ? data._campaigns : [];
   const m = data._meta || {};
   const meta = {};
-  ['senderEmail', 'pagesBase', 'gmailAuthUser', 'gmailAuthUserAt', 'clickStoreId', 'clickStores', 'clickCache', 'seenClickMsg', 'mailSubject', 'mailBody', 'mailLink', 'mailUpdatedAt', 'statsResetAt'].forEach(k => {
+  ['senderEmail', 'pagesBase', 'gmailAuthUser', 'gmailAuthUserAt', 'clickStoreId', 'clickStores', 'clickCache', 'seenClickMsg', 'mailSubject', 'mailBody', 'mailLink', 'mailUpdatedAt', 'statsResetAt', 'linkSlugs'].forEach(k => {
     if (m[k] != null && m[k] !== '') meta[k] = m[k];
   });
   if (meta.gmailAuthUser === '0' && !meta.gmailAuthUserAt) delete meta.gmailAuthUser;
   if (meta.clickCache && !Object.keys(meta.clickCache).length) delete meta.clickCache;
   if (meta.seenClickMsg && !Object.keys(meta.seenClickMsg).length) delete meta.seenClickMsg;
   if (meta.clickStores && !meta.clickStores.length) delete meta.clickStores;
+  if (meta.linkSlugs && !Object.keys(meta.linkSlugs).length) delete meta.linkSlugs;
   out._meta = meta;
   return out;
 }
@@ -2364,6 +2400,8 @@ function mergeState(local, remote) {
   }
   if (lm.senderEmail || rm.senderEmail) meta.senderEmail = lm.senderEmail || rm.senderEmail;
   if (lm.pagesBase || rm.pagesBase) meta.pagesBase = lm.pagesBase || rm.pagesBase;
+  const slugs = { ...(rm.linkSlugs || {}), ...(lm.linkSlugs || {}) };
+  if (Object.keys(slugs).length) meta.linkSlugs = slugs;
 
   const stores = [];
   const pushStore = (id) => {
