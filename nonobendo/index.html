@@ -44,6 +44,10 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; }
+  .track-note { margin: 0 0 12px; color: var(--text2); font-size: 12px; line-height: 1.45; }
+  .track-preview { margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface2); border: 1px solid var(--border); font-size: 13px; line-height: 1.5; word-break: break-word; }
+  .track-preview b { display: block; margin-bottom: 4px; color: var(--accent); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+  .track-preview span { color: var(--text2); }
 
   /* ─── HEADER ─── */
   .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 100; }
@@ -438,11 +442,21 @@
         <label>Objet</label>
         <input type="text" id="camp-subject" value="Candidature alternance Architecture / Design">
       </div>
+    </div>
+    <div class="form-row">
       <div class="form-group" style="flex:2">
-        <label>Lien CV / portfolio (optionnel)</label>
+        <label for="camp-track-base">Adresse du lien de suivi</label>
+        <input type="url" id="camp-track-base" placeholder="https://noemie-mauquet-portfolio.fr" autocomplete="off" spellcheck="false" inputmode="url">
+      </div>
+    </div>
+    <p class="track-note">Le mail affiche cette adresse, suivie de <code>/l?d=…</code>. Elle doit ouvrir cette page, sinon le clic n’est pas compté. Laisse vide pour un lien court automatique.</p>
+    <div class="form-row">
+      <div class="form-group" style="flex:2">
+        <label for="camp-link">Lien du site à suivre</label>
         <input type="url" id="camp-link" placeholder="https://…">
       </div>
     </div>
+    <p class="track-preview" id="camp-track-preview"></p>
     <div class="form-row">
       <div class="form-group">
         <label>Message court</label>
@@ -1446,15 +1460,18 @@ function captureMailTemplate() {
   const sub = document.getElementById('camp-subject');
   const body = document.getElementById('camp-body');
   const link = document.getElementById('camp-link');
+  const base = document.getElementById('camp-track-base');
   if (!sub || !body || !link) return;
   if (!userData._meta) userData._meta = {};
   const subject = sub.value;
   const text = body.value;
   const url = link.value.trim();
-  if (userData._meta.mailSubject === subject && userData._meta.mailBody === text && (userData._meta.mailLink || '') === url) return;
+  const pagesBase = base ? base.value.trim() : '';
+  if (userData._meta.mailSubject === subject && userData._meta.mailBody === text && (userData._meta.mailLink || '') === url && (userData._meta.pagesBase || '') === pagesBase) return;
   userData._meta.mailSubject = subject;
   userData._meta.mailBody = text;
   userData._meta.mailLink = url;
+  userData._meta.pagesBase = pagesBase;
   userData._meta.mailUpdatedAt = Date.now();
   saveData();
 }
@@ -1467,6 +1484,12 @@ function applyMailTemplate() {
   if (sub && m.mailSubject != null && document.activeElement !== sub) sub.value = m.mailSubject;
   if (body && m.mailBody != null && document.activeElement !== body) body.value = m.mailBody;
   if (link && m.mailLink != null && document.activeElement !== link) link.value = m.mailLink;
+  const base = document.getElementById('camp-track-base');
+  if (base && document.activeElement !== base) {
+    const saved = normalizeBase(m.pagesBase || '');
+    base.value = saved && !/^https:\/\/nathanbgd\.github\.io\//.test(saved) ? m.pagesBase : '';
+  }
+  refreshTrackPreview();
 }
 
 function openCampaignModal() {
@@ -1586,11 +1609,61 @@ function showGmailQueue(items, hint) {
   box.scrollIntoView({ block: 'nearest' });
 }
 
-function getLinkBase() {
+function normalizeBase(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+    const path = u.pathname.endsWith('/') ? u.pathname : u.pathname + '/';
+    return u.origin + path;
+  } catch (e) {
+    return '';
+  }
+}
+
+function defaultLinkBase() {
   if (location.protocol.startsWith('http') && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
     return location.href.replace(/[^/]*$/, '');
   }
   return 'https://nathanbgd.github.io/project/nonobendo/';
+}
+
+function configuredBase() {
+  const field = document.getElementById('camp-track-base');
+  const raw = field ? field.value : ((userData._meta && userData._meta.pagesBase) || '');
+  const base = normalizeBase(raw);
+  if (!base || /^https:\/\/nathanbgd\.github\.io\//.test(base)) return '';
+  return base;
+}
+
+function getLinkBase() {
+  return configuredBase() || defaultLinkBase();
+}
+
+function refreshTrackPreview() {
+  const el = document.getElementById('camp-track-preview');
+  if (!el) return;
+  const destField = document.getElementById('camp-link');
+  let dest = destField ? destField.value.trim() : '';
+  if (dest && !/^https?:\/\//i.test(dest)) dest = 'https://' + dest;
+  el.replaceChildren();
+  const title = document.createElement('b');
+  title.textContent = 'Lien de suivi';
+  el.appendChild(title);
+  if (!dest) {
+    el.appendChild(document.createTextNode('Indique le site à suivre pour préparer le lien.'));
+    return;
+  }
+  const typed = (document.getElementById('camp-track-base') || {}).value || '';
+  const custom = normalizeBase(typed);
+  const shown = (custom || defaultLinkBase()) + 'l?d=…';
+  el.appendChild(document.createTextNode(custom ? shown : shown + ' (raccourci à l’envoi)'));
+  el.appendChild(document.createElement('br'));
+  const site = document.createElement('span');
+  site.textContent = 'Site ouvert ensuite : ' + dest;
+  el.appendChild(site);
 }
 
 function allClickStores() {
@@ -1642,6 +1715,7 @@ async function buildQuietLink(storeId, companyId, targetUrl) {
   if (!/^https?:\/\//i.test(dest)) dest = 'https://' + dest;
 
   const compact = getLinkBase() + 'l?d=' + packCompact(storeId, companyId, dest);
+  if (configuredBase()) return compact;
   const attempts = [
     async () => {
       const res = await fetch('https://da.gd/s?url=' + encodeURIComponent(compact));
@@ -2532,15 +2606,17 @@ function schedulePush() {
 }
 
 function bindSync() {
-  ['camp-subject', 'camp-body', 'camp-link'].forEach(id => {
+  ['camp-subject', 'camp-body', 'camp-link', 'camp-track-base'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', captureMailTemplate);
     el.addEventListener('input', () => {
+      if (id === 'camp-link' || id === 'camp-track-base') refreshTrackPreview();
       clearTimeout(bindSync._t);
       bindSync._t = setTimeout(captureMailTemplate, 500);
     });
   });
+  refreshTrackPreview();
   document.addEventListener('focusout', () => setTimeout(schedulePush, 80));
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) runSync();

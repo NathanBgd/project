@@ -42,19 +42,19 @@
   h1 { margin-top: 4px; font-size: clamp(32px, 5vw, 46px); line-height: .95; letter-spacing: -.04em; color: #fff; }
   .meta { color: var(--muted); font-size: 13px; max-width: 34rem; line-height: 1.45; }
   .filters, .kpis, .charts { margin-top: 18px; }
+  .views { display: flex; flex-wrap: wrap; gap: 8px; }
+  .views button[aria-pressed="true"] { background: #ffb020; color: #071018; border-color: transparent; font-weight: 700; }
   .filters {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 14px;
+    padding: 10px 12px;
     border: 1px solid var(--line);
     border-radius: 18px;
     background: rgba(10, 16, 28, .88);
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    backdrop-filter: blur(16px);
   }
+  #more { display: flex; flex-direction: column; gap: 10px; }
+  #more[hidden] { display: none; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .row span.lbl { color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; min-width: 72px; }
   button.chip, button.reset, .search {
@@ -78,8 +78,8 @@
   }
   button.chip[aria-pressed="false"] { color: var(--muted); }
   button.reset { background: #182338; }
-  .search { color: #fff; min-width: min(100%, 240px); font-size: 16px; border-radius: 12px; background: #0d1422; }
-  .search:focus, button.chip:focus-visible, button.reset:focus-visible { outline: 2px solid #8eb6ff; outline-offset: 2px; }
+  .search { color: #fff; flex: 1 1 160px; max-width: 280px; min-width: 0; font-size: 16px; border-radius: 12px; background: #0d1422; }
+  .search:focus, button.chip:focus-visible, button.reset:focus-visible, .views button:focus-visible, #filters-toggle:focus-visible { outline: 2px solid #8eb6ff; outline-offset: 2px; }
   .summary { margin-left: auto; color: #dbe7ff; font-size: 13px; font-variant-numeric: tabular-nums; }
   .years { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 200px; color: #dbe7ff; font-variant-numeric: tabular-nums; }
   input[type="range"] { flex: 1; accent-color: #4c8dff; min-width: 80px; }
@@ -114,6 +114,7 @@
   #donut, #bars, #regions, #studios, #heat { cursor: pointer; }
   #donut, #bars, #regions, #studios { height: 230px; }
   #heat { height: 250px; }
+  #map { height: min(68vh, 560px); cursor: pointer; }
   .tip { min-height: 1.2em; color: #ffd27a; font-size: 12px; margin-top: 6px; }
   .table-panel { margin-top: 10px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: rgba(0,0,0,.4); }
   .thead, .rowline {
@@ -141,7 +142,7 @@
   .rowline b { font-weight: 650; }
   .empty { padding: 28px 12px; color: rgba(255,255,255,.6); }
   .tools { display: flex; flex-wrap: wrap; gap: 8px; }
-  .tools button, .sheet button {
+  .tools button, .views button, #filters-toggle, .sheet button {
     appearance: none;
     border: 1px solid rgba(148,176,214,.3);
     background: #182338;
@@ -154,11 +155,11 @@
     cursor: pointer;
     touch-action: manipulation;
   }
-  .tools button[aria-pressed="true"] { background: #E69F00; color: #071018; border-color: transparent; font-weight: 700; }
+  .tools button[aria-pressed="true"], #filters-toggle[aria-expanded="true"] { background: #E69F00; color: #071018; border-color: transparent; font-weight: 700; }
   .lead { margin-top: 8px; max-width: 46rem; color: #d5e2f5; font-size: 15px; line-height: 1.45; }
   .rowline { cursor: pointer; }
   .rowline:hover { background: rgba(76,141,255,.08); }
-  .rowline:focus-visible, .tools button:focus-visible, .sheet button:focus-visible { outline: 2px solid #8eb6ff; outline-offset: 2px; }
+  .rowline:focus-visible, .tools button:focus-visible, .views button:focus-visible, #filters-toggle:focus-visible, .sheet button:focus-visible { outline: 2px solid #8eb6ff; outline-offset: 2px; }
   .modal[hidden] { display: none; }
   .modal {
     position: fixed; inset: 0; z-index: 40; display: grid; place-items: center;
@@ -188,6 +189,8 @@
     .charts { grid-template-columns: 1fr; }
     .panel.span2, .panel.wide { grid-column: auto; }
     .summary { margin-left: 0; width: 100%; }
+    .search { max-width: none; }
+    #map { height: 320px; }
     .table-panel { overflow-x: auto; }
     .thead, .rowline { min-width: 860px; }
     .vview { overflow-x: hidden; }
@@ -212,28 +215,36 @@
     </div>
   </header>
   <p class="meta" id="meta">100&nbsp;000 lignes fictives, calculées dans cette page. Rien n’est envoyé.</p>
+  <nav class="views" aria-label="Vues">
+    <button type="button" data-view="dash" aria-pressed="true">Tableau de bord</button>
+    <button type="button" data-view="table" aria-pressed="false">Tableau</button>
+    <button type="button" data-view="map" aria-pressed="false">Carte</button>
+  </nav>
   <section class="filters" aria-label="Filtres">
     <div class="row">
-      <label class="lbl" for="q">Recherche</label>
-      <input class="search" id="q" type="search" placeholder="Ville ou atelier" autocomplete="off" enterkeyhint="search">
+      <input class="search" id="q" type="search" placeholder="Ville ou atelier" aria-label="Ville ou atelier" autocomplete="off" enterkeyhint="search">
+      <button type="button" id="filters-toggle" aria-expanded="false" aria-controls="more">Filtres</button>
       <button class="reset" type="button" id="reset">Réinitialiser</button>
       <strong class="summary" id="summary"></strong>
     </div>
-    <div class="row" id="regions"></div>
-    <div class="row" id="types"></div>
-    <div class="row" id="statuses"></div>
-    <div class="row">
-      <span class="lbl">Années</span>
-      <div class="years">
-        <span>De</span>
-        <input id="y0" type="range" min="2015" max="2026" value="2015" aria-label="Année de début">
-        <span>À</span>
-        <input id="y1" type="range" min="2015" max="2026" value="2026" aria-label="Année de fin">
-        <span id="yr"></span>
+    <div id="more" hidden>
+      <div class="row" id="f-regions"></div>
+      <div class="row" id="f-types"></div>
+      <div class="row" id="f-statuses"></div>
+      <div class="row">
+        <span class="lbl">Années</span>
+        <div class="years">
+          <span>De</span>
+          <input id="y0" type="range" min="2015" max="2026" value="2015" aria-label="Année de début">
+          <span>À</span>
+          <input id="y1" type="range" min="2015" max="2026" value="2026" aria-label="Année de fin">
+          <span id="yr"></span>
+        </div>
       </div>
     </div>
   </section>
   <section class="kpis" id="kpis" aria-label="Indicateurs"></section>
+  <div id="view-dash">
   <p class="sr" id="live" aria-live="polite"></p>
   <section class="charts">
     <article class="panel span2">
@@ -268,12 +279,24 @@
       <canvas id="heat" width="1000" height="250"></canvas>
     </article>
   </section>
+  </div>
+  <section id="view-table" hidden>
   <section class="table-panel" aria-label="Opérations">
     <div class="thead" id="thead"></div>
     <div class="vview" id="vview">
       <div class="rows" id="rows"></div>
       <p class="empty" id="empty" hidden>Aucune opération pour ces filtres.</p>
     </div>
+  </section>
+  </section>
+  <section id="view-map" hidden>
+    <article class="panel">
+      <div class="ph">
+        <h2>Carte des villes</h2>
+        <p class="tip" id="map-tip">Clique une ville pour ne garder qu’elle.</p>
+      </div>
+      <canvas id="map" width="1000" height="520"></canvas>
+    </article>
   </section>
 </main>
 <div class="modal" id="dialog" hidden>
@@ -319,6 +342,20 @@
   const cityName = [];
   const cityRegion = [];
   CITIES.forEach((list, region) => list.forEach(name => { cityName.push(name); cityRegion.push(region); }));
+  const GEO = {
+    Paris:[48.86,2.35], Lyon:[45.76,4.84], Bordeaux:[44.84,-0.58], Lille:[50.63,3.06], Nantes:[47.22,-1.55], Marseille:[43.30,5.37], Bruxelles:[50.85,4.35], 'Genève':[46.20,6.14], Lisbonne:[38.72,-9.14], Berlin:[52.52,13.40], Milan:[45.46,9.19], Barcelone:[41.39,2.17],
+    Tokyo:[35.68,139.69], 'Séoul':[37.57,126.98], Singapour:[1.35,103.82], Shanghai:[31.23,121.47], Kyoto:[35.01,135.77], Taipei:[25.03,121.57], Bangkok:[13.76,100.50], Mumbai:[19.08,72.88],
+    'Montréal':[45.50,-73.57], 'New York':[40.71,-74.01], Mexico:[19.43,-99.13], 'São Paulo':[-23.55,-46.63], 'Buenos Aires':[-34.60,-58.38], Vancouver:[49.28,-123.12], Chicago:[41.88,-87.63],
+    Dakar:[14.72,-17.47], Casablanca:[33.57,-7.59], 'Le Caire':[30.04,31.24], Nairobi:[-1.29,36.82], 'Le Cap':[-33.92,18.42], Tunis:[36.81,10.18],
+    Sydney:[-33.87,151.21], Melbourne:[-37.81,144.96], Auckland:[-36.85,174.76], Wellington:[-41.29,174.78]
+  };
+  const cityLat = new Float32Array(cityName.length);
+  const cityLon = new Float32Array(cityName.length);
+  cityName.forEach((name, i) => {
+    const g = GEO[name];
+    cityLat[i] = g[0];
+    cityLon[i] = g[1];
+  });
 
   function mulberry32(seed) {
     let a = seed >>> 0;
@@ -400,6 +437,7 @@
       byStatus: new Float64Array(STATUSES.length),
       byRegion: new Float64Array(REGIONS.length),
       byStudio: new Float64Array(STUDIOS.length),
+      byCity: new Float64Array(cityName.length),
       heat: new Float64Array(REGIONS.length * YEARS)
     };
   }
@@ -412,6 +450,7 @@
       byStatus: v.byStatus.slice(),
       byRegion: v.byRegion.slice(),
       byStudio: v.byStudio.slice(),
+      byCity: v.byCity.slice(),
       heat: v.heat.slice()
     };
   }
@@ -429,6 +468,7 @@
     for (let i = 0; i < STATUSES.length; i++) o.byStatus[i] = a.byStatus[i] + (b.byStatus[i] - a.byStatus[i]) * t;
     for (let i = 0; i < REGIONS.length; i++) o.byRegion[i] = a.byRegion[i] + (b.byRegion[i] - a.byRegion[i]) * t;
     for (let i = 0; i < STUDIOS.length; i++) o.byStudio[i] = a.byStudio[i] + (b.byStudio[i] - a.byStudio[i]) * t;
+    for (let i = 0; i < cityName.length; i++) o.byCity[i] = a.byCity[i] + (b.byCity[i] - a.byCity[i]) * t;
     for (let i = 0; i < o.heat.length; i++) o.heat[i] = a.heat[i] + (b.heat[i] - a.heat[i]) * t;
     return o;
   }
@@ -466,6 +506,7 @@
       next.byStatus[status[i]]++;
       next.byRegion[region[i]]++;
       next.byStudio[studio[i]]++;
+      next.byCity[city[i]]++;
       next.heat[region[i] * YEARS + yi]++;
       next.budget += budget[i];
       next.area += area[i];
@@ -723,9 +764,92 @@
     topStudioIds = STUDIOS.map((_, i) => i).sort((a, b) => v.byStudio[b] - v.byStudio[a]).slice(0, 8);
     drawLabeled(studioC, topStudioIds.map(i => STUDIOS[i]), topStudioIds.map(i => v.byStudio[i]), pal().type);
   }
+  let currentView = 'dash';
+  const mapC = document.getElementById('map');
+  const mapTip = document.getElementById('map-tip');
+  let mapHits = [];
+  let mapHover = -1;
+  function project(lat, lon, w, h) {
+    const pad = 18;
+    return [
+      pad + ((lon + 180) / 360) * (w - pad * 2),
+      pad + ((85 - lat) / 150) * (h - pad * 2)
+    ];
+  }
+  function drawMap(v) {
+    const { c, w, h } = ctxOf(mapC);
+    if (w < 2) return;
+    c.fillStyle = '#0b1220';
+    c.fillRect(0, 0, w, h);
+    c.strokeStyle = 'rgba(148,176,214,.16)';
+    c.lineWidth = 1;
+    for (let lon = -180; lon <= 180; lon += 30) {
+      const x = project(0, lon, w, h)[0];
+      c.beginPath();
+      c.moveTo(x, 8);
+      c.lineTo(x, h - 8);
+      c.stroke();
+    }
+    for (let lat = -60; lat <= 75; lat += 30) {
+      const y = project(lat, 0, w, h)[1];
+      c.beginPath();
+      c.moveTo(8, y);
+      c.lineTo(w - 8, y);
+      c.stroke();
+    }
+    let max = 1;
+    for (let i = 0; i < cityName.length; i++) if (v.byCity[i] > max) max = v.byCity[i];
+    mapHits = [];
+    for (let i = 0; i < cityName.length; i++) {
+      const n = v.byCity[i];
+      if (n <= 0) continue;
+      const xy = project(cityLat[i], cityLon[i], w, h);
+      const r = 4 + 14 * Math.sqrt(n / max);
+      mapHits.push({ i: i, x: xy[0], y: xy[1], r: r });
+      c.beginPath();
+      c.fillStyle = pal().reg[cityRegion[i]];
+      c.globalAlpha = mapHover === i ? 1 : 0.82;
+      c.arc(xy[0], xy[1], r, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+    c.font = '12px system-ui, sans-serif';
+    c.fillStyle = '#e8eef8';
+    c.textAlign = 'left';
+    c.textBaseline = 'bottom';
+    const labels = mapHits.slice().sort((a, b) => v.byCity[b.i] - v.byCity[a.i]).slice(0, 8);
+    for (let i = 0; i < labels.length; i++) {
+      const hit = labels[i];
+      c.fillText(cityName[hit.i], hit.x + hit.r + 4, hit.y - 2);
+    }
+  }
+  function hitMap(event) {
+    const rect = mapC.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    let best = -1;
+    let bestD = 18;
+    for (let i = 0; i < mapHits.length; i++) {
+      const hit = mapHits[i];
+      const dx = x - hit.x;
+      const dy = y - hit.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      const limit = Math.max(hit.r + 6, 16);
+      if (d <= limit && (best < 0 || d < bestD)) {
+        best = hit.i;
+        bestD = d;
+      }
+    }
+    return best;
+  }
   function draw(v) {
     view = v;
     paintKpis(v);
+    if (currentView === 'map') {
+      drawMap(v);
+      return;
+    }
+    if (currentView !== 'dash') return;
     drawArea(v);
     drawDonut(v);
     drawBars(v);
@@ -824,7 +948,7 @@
   function chips(host, names, key, colors) {
     const label = document.createElement('span');
     label.className = 'lbl';
-    label.textContent = host.id === 'regions' ? 'Régions' : host.id === 'types' ? 'Types' : 'Statuts';
+    label.textContent = key === 'regions' ? 'Régions' : key === 'types' ? 'Types' : 'Statuts';
     host.appendChild(label);
     names.forEach((name, i) => {
       const btn = document.createElement('button');
@@ -843,9 +967,52 @@
       host.appendChild(btn);
     });
   }
-  chips(document.getElementById('regions'), REGIONS, 'regions', pal().reg);
-  chips(document.getElementById('types'), TYPES, 'types', pal().type);
-  chips(document.getElementById('statuses'), STATUSES, 'statuses', pal().stat);
+  chips(document.getElementById('f-regions'), REGIONS, 'regions', pal().reg);
+  chips(document.getElementById('f-types'), TYPES, 'types', pal().type);
+  chips(document.getElementById('f-statuses'), STATUSES, 'statuses', pal().stat);
+  document.querySelectorAll('[data-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentView = btn.dataset.view;
+      document.getElementById('view-dash').hidden = currentView !== 'dash';
+      document.getElementById('view-table').hidden = currentView !== 'table';
+      document.getElementById('view-map').hidden = currentView !== 'map';
+      document.querySelectorAll('[data-view]').forEach(el => {
+        el.setAttribute('aria-pressed', String(el === btn));
+      });
+      if (view) requestAnimationFrame(() => draw(view));
+      if (currentView === 'table') requestAnimationFrame(paintTable);
+    });
+  });
+  document.getElementById('filters-toggle').addEventListener('click', () => {
+    const more = document.getElementById('more');
+    const open = more.hidden;
+    more.hidden = !open;
+    document.getElementById('filters-toggle').setAttribute('aria-expanded', String(open));
+  });
+  mapC.addEventListener('mousemove', event => {
+    if (currentView !== 'map' || !view) return;
+    const hit = hitMap(event);
+    if (hit === mapHover) return;
+    mapHover = hit;
+    mapTip.textContent = hit < 0
+      ? 'Clique une ville pour ne garder qu’elle.'
+      : cityName[hit] + ' · ' + fmt.format(Math.round(view.byCity[hit])) + ' opérations';
+    drawMap(view);
+  });
+  mapC.addEventListener('mouseleave', () => {
+    if (mapHover < 0) return;
+    mapHover = -1;
+    mapTip.textContent = 'Clique une ville pour ne garder qu’elle.';
+    if (view) drawMap(view);
+  });
+  mapC.addEventListener('click', event => {
+    const hit = hitMap(event);
+    if (hit < 0 || !view) return;
+    const name = cityName[hit];
+    openModal('Ville · ' + name, '<p>' + fmt.format(Math.round(view.byCity[hit])) + ' opérations dans la sélection. Région : ' + REGIONS[cityRegion[hit]] + '.</p>', [
+      { label: 'Ne garder que ' + name, run: () => searchName(name) }
+    ]);
+  });
 
   const y0 = document.getElementById('y0');
   const y1 = document.getElementById('y1');
