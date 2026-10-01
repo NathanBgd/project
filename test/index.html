@@ -84,6 +84,8 @@
   .years { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 200px; color: #dbe7ff; font-variant-numeric: tabular-nums; }
   input[type="range"] { flex: 1; accent-color: #4c8dff; min-width: 80px; }
   .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .kpis.impact { grid-template-columns: repeat(4, 1fr); }
+  .block-title { margin: 16px 0 0; color: #fff; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
   .kpi {
     padding: 12px 12px 10px;
     border-radius: 16px;
@@ -111,15 +113,15 @@
   .ramp { width: 72px !important; border-radius: 99px; background: linear-gradient(90deg, #1e3a6e, #2ee6a6, #ffb020, #ff5d73); }
   canvas { width: 100%; display: block; touch-action: pan-y; }
   #area { height: 260px; }
-  #donut, #bars, #regions, #studios, #heat { cursor: pointer; }
-  #donut, #bars, #regions, #studios { height: 230px; }
+  #donut, #bars, #regions, #studios, #heat, #grades { cursor: pointer; }
+  #donut, #bars, #regions, #studios, #grades { height: 230px; }
   #heat { height: 250px; }
   #map { height: min(68vh, 560px); cursor: pointer; }
   .tip { min-height: 1.2em; color: #ffd27a; font-size: 12px; margin-top: 6px; }
   .table-panel { border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: rgba(0,0,0,.4); }
   .thead, .rowline {
     display: grid;
-    grid-template-columns: 1.3fr 1fr .8fr .8fr .7fr .55fr .9fr .8fr .5fr;
+    grid-template-columns: 1.15fr .85fr .7fr .7fr .6fr .5fr .75fr .7fr .4fr .65fr .45fr;
     gap: 8px;
     align-items: center;
     padding: 0 12px;
@@ -142,7 +144,7 @@
   .rowline b { font-weight: 650; }
   .empty { padding: 28px 12px; color: rgba(255,255,255,.6); }
   .tools { display: flex; flex-wrap: wrap; gap: 8px; }
-  .tools button, .views button, #filters-toggle, .sheet button {
+  .tools button, .tools a.doc, .views button, #filters-toggle, .sheet button {
     appearance: none;
     border: 1px solid rgba(148,176,214,.3);
     background: #182338;
@@ -155,6 +157,7 @@
     cursor: pointer;
     touch-action: manipulation;
   }
+  .tools a.doc { text-decoration: none; display: inline-flex; align-items: center; }
   .tools button[aria-pressed="true"], #filters-toggle[aria-expanded="true"] { background: #E69F00; color: #071018; border-color: transparent; font-weight: 700; }
   .lead { margin-top: 8px; max-width: 46rem; color: #d5e2f5; font-size: 15px; line-height: 1.45; }
   .rowline { cursor: pointer; }
@@ -182,17 +185,17 @@
   @media (max-width: 1100px) {
     .charts { grid-template-columns: 1fr 1fr; }
     .panel.span2, .panel.wide { grid-column: 1 / -1; }
-    .kpis { grid-template-columns: repeat(3, 1fr); }
+    .kpis, .kpis.impact { grid-template-columns: repeat(3, 1fr); }
   }
   @media (max-width: 720px) {
-    .kpis { grid-template-columns: 1fr 1fr; }
+    .kpis, .kpis.impact { grid-template-columns: 1fr 1fr; }
     .charts { grid-template-columns: 1fr; }
     .panel.span2, .panel.wide { grid-column: auto; }
     .summary { margin-left: 0; width: 100%; }
     .search { max-width: none; }
     #map { height: 320px; }
     .table-panel { overflow-x: auto; }
-    .thead, .rowline, .vview { min-width: 860px; }
+    .thead, .rowline, .vview { min-width: 1040px; }
     .vview { overflow-x: hidden; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -207,9 +210,10 @@
     <div>
       <p class="eye">Nathan · Test</p>
       <h1>Atlas</h1>
-      <p class="lead">Chaque ligne est une opération d’architecture inventée : un atelier, une ville, un type de bâtiment, un statut, une année, un budget, une surface et un score.</p>
+      <p class="lead">Chaque ligne est une opération d’architecture inventée : un atelier, une ville, un type, un statut, une année, un budget, une surface, un score, puis un impact fictif (carbone, énergie, accessibilité, qualité).</p>
     </div>
     <div class="tools">
+      <a class="doc" href="../Atlas-metriques.docx">Dossier</a>
       <button type="button" id="about">Les données</button>
       <button type="button" id="cvd" aria-pressed="false">Mode daltonien</button>
     </div>
@@ -231,6 +235,7 @@
       <div class="row" id="f-regions"></div>
       <div class="row" id="f-types"></div>
       <div class="row" id="f-statuses"></div>
+      <div class="row" id="f-grades"></div>
       <div class="row">
         <span class="lbl">Années</span>
         <div class="years">
@@ -245,6 +250,8 @@
   </section>
   <div id="view-dash">
   <section class="kpis" id="kpis" aria-label="Indicateurs"></section>
+  <h2 class="block-title">Impact fictif</h2>
+  <section class="kpis impact" id="impact" aria-label="Impact"></section>
   <p class="sr" id="live" aria-live="polite"></p>
   <section class="charts">
     <article class="panel span2">
@@ -270,6 +277,10 @@
     <article class="panel span2">
       <h2>Ateliers les plus actifs</h2>
       <canvas id="studios" width="640" height="230"></canvas>
+    </article>
+    <article class="panel span2">
+      <h2>Note carbone</h2>
+      <canvas id="grades" width="640" height="230"></canvas>
     </article>
     <article class="panel wide">
       <div class="ph">
@@ -319,15 +330,18 @@
     type: ['#7aa2ff', '#3dd6c6', '#f0c14a', '#ff7a59', '#c084fc', '#67e8f9'],
     stat: ['#3dd68c', '#ff9f43', '#5b8def', '#94a3b8'],
     budget: '#ffb020',
-    count: '#4c8dff'
+    count: '#4c8dff',
+    grade: ['#1f8a4c', '#3cb371', '#8fce4a', '#e0c04a', '#f0a04a', '#e06a45', '#d64545']
   };
   const PALETTE_CVD = {
     reg: ['#0072B2', '#E69F00', '#009E73', '#CC79A7', '#56B4E9'],
     type: ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7', '#F0E442'],
     stat: ['#009E73', '#E69F00', '#0072B2', '#999999'],
     budget: '#E69F00',
-    count: '#0072B2'
+    count: '#0072B2',
+    grade: ['#009E73', '#56B4E9', '#F0E442', '#E69F00', '#D55E00', '#CC79A7', '#0072B2']
   };
+  const GRADES = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
   let cvd = false;
   try { cvd = localStorage.getItem('atlas-cvd') === '1'; } catch (e) { cvd = false; }
   function pal() { return cvd ? PALETTE_CVD : PALETTE; }
@@ -409,12 +423,46 @@
     score[i] = 42 + ((rnd() * 57) | 0) + (status[i] === 0 ? 4 : 0);
     if (score[i] > 99) score[i] = 99;
   }
+  const carbon = new Uint16Array(N);
+  const energy = new Uint16Array(N);
+  const access = new Uint8Array(N);
+  const quality = new Uint8Array(N);
+  const grade = new Uint8Array(N);
+  const CARBON_BASE = [480, 340, 410, 620, 860, 160];
+  const ENERGY_BASE = [110, 75, 90, 130, 165, 18];
+  function gradeIndex(value) {
+    if (value <= 250) return 0;
+    if (value <= 400) return 1;
+    if (value <= 550) return 2;
+    if (value <= 750) return 3;
+    if (value <= 1000) return 4;
+    if (value <= 1300) return 5;
+    return 6;
+  }
+  for (let i = 0; i < N; i++) {
+    const newer = (year[i] - YEAR0) / (YEARS - 1);
+    const done = status[i] === 0 ? 0.82 : status[i] === 1 ? 0.92 : 1;
+    const wobble = 0.9 + (score[i] % 11) / 50;
+    let cKg = CARBON_BASE[type[i]] * (1.08 - newer * 0.22) * done * wobble;
+    if (cKg < 90) cKg = 90;
+    if (cKg > 1500) cKg = 1500;
+    carbon[i] = cKg;
+    let kwh = ENERGY_BASE[type[i]] * (1.05 - newer * 0.2) * done * (0.92 + (score[i] % 7) / 40);
+    if (kwh < 8) kwh = 8;
+    energy[i] = kwh;
+    let ac = (type[i] === 4 ? 46 : type[i] === 5 ? 86 : 74) + (score[i] - 70) / 4;
+    if (status[i] === 0) ac += 4;
+    access[i] = Math.max(20, Math.min(99, ac));
+    quality[i] = Math.max(30, Math.min(99, 38 + score[i] * 0.5 + (status[i] === 0 ? 6 : 0)));
+    grade[i] = gradeIndex(carbon[i]);
+  }
 
   const state = {
     q: '',
     regions: (1 << REGIONS.length) - 1,
     types: (1 << TYPES.length) - 1,
     statuses: (1 << STATUSES.length) - 1,
+    grades: (1 << GRADES.length) - 1,
     y0: YEAR0,
     y1: YEAR0 + YEARS - 1,
     sort: 'budget',
@@ -438,6 +486,8 @@
       byRegion: new Float64Array(REGIONS.length),
       byStudio: new Float64Array(STUDIOS.length),
       byCity: new Float64Array(cityName.length),
+      byGrade: new Float64Array(GRADES.length),
+      carbonArea: 0, energyArea: 0, access: 0, quality: 0,
       heat: new Float64Array(REGIONS.length * YEARS)
     };
   }
@@ -451,6 +501,8 @@
       byRegion: v.byRegion.slice(),
       byStudio: v.byStudio.slice(),
       byCity: v.byCity.slice(),
+      byGrade: v.byGrade.slice(),
+      carbonArea: v.carbonArea, energyArea: v.energyArea, access: v.access, quality: v.quality,
       heat: v.heat.slice()
     };
   }
@@ -469,6 +521,11 @@
     for (let i = 0; i < REGIONS.length; i++) o.byRegion[i] = a.byRegion[i] + (b.byRegion[i] - a.byRegion[i]) * t;
     for (let i = 0; i < STUDIOS.length; i++) o.byStudio[i] = a.byStudio[i] + (b.byStudio[i] - a.byStudio[i]) * t;
     for (let i = 0; i < cityName.length; i++) o.byCity[i] = a.byCity[i] + (b.byCity[i] - a.byCity[i]) * t;
+    for (let i = 0; i < GRADES.length; i++) o.byGrade[i] = a.byGrade[i] + (b.byGrade[i] - a.byGrade[i]) * t;
+    o.carbonArea = a.carbonArea + (b.carbonArea - a.carbonArea) * t;
+    o.energyArea = a.energyArea + (b.energyArea - a.energyArea) * t;
+    o.access = a.access + (b.access - a.access) * t;
+    o.quality = a.quality + (b.quality - a.quality) * t;
     for (let i = 0; i < o.heat.length; i++) o.heat[i] = a.heat[i] + (b.heat[i] - a.heat[i]) * t;
     return o;
   }
@@ -498,6 +555,7 @@
       if ((state.regions & (1 << region[i])) === 0) continue;
       if ((state.types & (1 << type[i])) === 0) continue;
       if ((state.statuses & (1 << status[i])) === 0) continue;
+      if ((state.grades & (1 << grade[i])) === 0) continue;
       if (cityOk && !cityOk[city[i]] && !studioOk[studio[i]]) continue;
       const yi = y - YEAR0;
       next.byYearB[yi] += budget[i];
@@ -507,6 +565,11 @@
       next.byRegion[region[i]]++;
       next.byStudio[studio[i]]++;
       next.byCity[city[i]]++;
+      next.byGrade[grade[i]]++;
+      next.carbonArea += carbon[i] * area[i];
+      next.energyArea += energy[i] * area[i];
+      next.access += access[i];
+      next.quality += quality[i];
       next.heat[region[i] * YEARS + yi]++;
       next.budget += budget[i];
       next.area += area[i];
@@ -524,6 +587,8 @@
         if (key === 'budget') d = budget[a] - budget[b];
         else if (key === 'area') d = area[a] - area[b];
         else if (key === 'score') d = score[a] - score[b];
+        else if (key === 'carbon') d = carbon[a] - carbon[b];
+        else if (key === 'quality') d = quality[a] - quality[b];
         else if (key === 'year') d = year[a] - year[b];
         else if (key === 'studio') d = studioRank[studio[a]] - studioRank[studio[b]];
         else if (key === 'city') d = cityRank[city[a]] - cityRank[city[b]];
@@ -546,6 +611,12 @@
     ['Budget moyen', '#ff7a59', 'par opération'],
     ['Région leader', '#ff5d73', 'le plus d’opérations']
   ];
+  const IMPACT_DEF = [
+    ['Carbone', '#3cb371', 'kg CO₂e / m²'],
+    ['Énergie', '#ffb020', 'kWh / m² / an'],
+    ['Accessibilité', '#4c8dff', 'sur 100'],
+    ['Qualité', '#b388ff', 'sur 100']
+  ];
   const kpiEls = KPI_DEF.map(([label, color, hint]) => {
     const el = document.createElement('article');
     el.className = 'kpi';
@@ -554,6 +625,17 @@
     el.querySelector('small').textContent = label;
     el.querySelector('em').textContent = hint;
     kpis.appendChild(el);
+    return el;
+  });
+  const impactHost = document.getElementById('impact');
+  const impactEls = IMPACT_DEF.map(([label, color, hint]) => {
+    const el = document.createElement('article');
+    el.className = 'kpi';
+    el.style.setProperty('--c', color);
+    el.innerHTML = '<small></small><b>0</b><em></em>';
+    el.querySelector('small').textContent = label;
+    el.querySelector('em').textContent = hint;
+    impactHost.appendChild(el);
     return el;
   });
   const tip = document.getElementById('tip');
@@ -565,6 +647,7 @@
   const heatC = document.getElementById('heat');
   const regionC = document.getElementById('regions');
   const studioC = document.getElementById('studios');
+  const gradeC = document.getElementById('grades');
   const summary = document.getElementById('summary');
 
   function money(n) {
@@ -589,6 +672,14 @@
       leader(v.byRegion, REGIONS)
     ];
     for (let i = 0; i < texts.length; i++) kpiEls[i].querySelector('b').textContent = texts[i];
+    const areaSafe = v.area || 1;
+    const impactTexts = [
+      fmt.format(Math.round(v.carbonArea / areaSafe)),
+      fmt.format(Math.round(v.energyArea / areaSafe)),
+      fmt1.format(v.count ? v.access / v.count : 0),
+      fmt1.format(v.count ? v.quality / v.count : 0)
+    ];
+    for (let i = 0; i < impactTexts.length; i++) impactEls[i].querySelector('b').textContent = impactTexts[i];
   }
 
   function ctxOf(canvas) {
@@ -691,6 +782,9 @@
   }
   function drawBars(v) {
     drawLabeled(barsC, TYPES, v.byType, pal().type);
+  }
+  function drawGrades(v) {
+    drawLabeled(gradeC, GRADES.map(name => 'Note ' + name), v.byGrade, pal().grade);
   }
   function drawHeat(v) {
     const { c, w, h } = ctxOf(heatC);
@@ -890,6 +984,7 @@
     drawBars(v);
     drawRegions(v);
     drawStudios(v);
+    drawGrades(v);
     drawHeat(v);
   }
   function animateTo(next) {
@@ -953,14 +1048,15 @@
       el.style.transform = 'translateY(' + ((start + i) * ROW) + 'px)';
       el.dataset.pos = String(start + i);
       el.setAttribute('aria-label', 'Fiche ' + STUDIOS[studio[rec]] + ', ' + cityName[city[rec]]);
-      el.innerHTML = '<b>' + STUDIOS[studio[rec]] + '</b><span>' + cityName[city[rec]] + '</span><span class="pill" style="--c:' + pal().reg[region[rec]] + '">' + REGIONS[region[rec]] + '</span><span class="pill" style="--c:' + pal().type[type[rec]] + '">' + TYPES[type[rec]] + '</span><span class="pill" style="--c:' + pal().stat[status[rec]] + '">' + STATUSES[status[rec]] + '</span><span>' + year[rec] + '</span><span>' + money(budget[rec]) + '</span><span>' + fmt.format(Math.round(area[rec])) + ' m²</span><span>' + score[rec] + '</span>';
+      el.innerHTML = '<b>' + STUDIOS[studio[rec]] + '</b><span>' + cityName[city[rec]] + '</span><span class="pill" style="--c:' + pal().reg[region[rec]] + '">' + REGIONS[region[rec]] + '</span><span class="pill" style="--c:' + pal().type[type[rec]] + '">' + TYPES[type[rec]] + '</span><span class="pill" style="--c:' + pal().stat[status[rec]] + '">' + STATUSES[status[rec]] + '</span><span>' + year[rec] + '</span><span>' + money(budget[rec]) + '</span><span>' + fmt.format(Math.round(area[rec])) + ' m²</span><span>' + score[rec] + '</span><span>' + carbon[rec] + ' · ' + GRADES[grade[rec]] + '</span><span>' + quality[rec] + '</span>';
     }
   }
   vview.addEventListener('scroll', paintTable, { passive: true });
 
   const COLS = [
     ['studio', 'Atelier'], ['city', 'Ville'], ['region', 'Région'], ['type', 'Type'],
-    ['status', 'Statut'], ['year', 'Année'], ['budget', 'Budget'], ['area', 'Surface'], ['score', 'Score']
+    ['status', 'Statut'], ['year', 'Année'], ['budget', 'Budget'], ['area', 'Surface'], ['score', 'Score'],
+    ['carbon', 'Carbone'], ['quality', 'Qualité']
   ];
   const thead = document.getElementById('thead');
   COLS.forEach(([key, label]) => {
@@ -984,7 +1080,7 @@
   function chips(host, names, key, colors) {
     const label = document.createElement('span');
     label.className = 'lbl';
-    label.textContent = key === 'regions' ? 'Régions' : key === 'types' ? 'Types' : 'Statuts';
+    label.textContent = key === 'regions' ? 'Régions' : key === 'types' ? 'Types' : key === 'grades' ? 'Carbone' : 'Statuts';
     host.appendChild(label);
     names.forEach((name, i) => {
       const btn = document.createElement('button');
@@ -1006,6 +1102,7 @@
   chips(document.getElementById('f-regions'), REGIONS, 'regions', pal().reg);
   chips(document.getElementById('f-types'), TYPES, 'types', pal().type);
   chips(document.getElementById('f-statuses'), STATUSES, 'statuses', pal().stat);
+  chips(document.getElementById('f-grades'), GRADES, 'grades', pal().grade);
   document.querySelectorAll('[data-view]').forEach(btn => {
     btn.addEventListener('click', () => {
       currentView = btn.dataset.view;
@@ -1075,6 +1172,7 @@
     state.regions = (1 << REGIONS.length) - 1;
     state.types = (1 << TYPES.length) - 1;
     state.statuses = (1 << STATUSES.length) - 1;
+    state.grades = (1 << GRADES.length) - 1;
     state.y0 = YEAR0;
     state.y1 = YEAR0 + YEARS - 1;
     state.sort = 'budget';
@@ -1102,7 +1200,8 @@
     const avg = next.count ? next.score / next.count : 0;
     const off = bitCount(((1 << REGIONS.length) - 1) ^ state.regions)
       + bitCount(((1 << TYPES.length) - 1) ^ state.types)
-      + bitCount(((1 << STATUSES.length) - 1) ^ state.statuses);
+      + bitCount(((1 << STATUSES.length) - 1) ^ state.statuses)
+      + bitCount(((1 << GRADES.length) - 1) ^ state.grades);
     summary.textContent = fmt.format(next.count) + ' opérations'
       + (state.q ? ' · « ' + state.q + ' »' : '')
       + (off ? ' · ' + off + ' filtre' + (off > 1 ? 's' : '') + ' retiré' + (off > 1 ? 's' : '') : '');
@@ -1197,7 +1296,11 @@
       ['Année', String(year[rec]), 'Entre 2015 et 2026.'],
       ['Budget', money(budget[rec]), 'Montant fictif, en euros.'],
       ['Surface', fmt.format(Math.round(area[rec])) + ' m²', 'Surface fictive.'],
-      ['Score', String(score[rec]), 'Note inventée de 42 à 99, un peu plus haute si le projet est livré.']
+      ['Score', String(score[rec]), 'Note inventée de 42 à 99, un peu plus haute si le projet est livré.'],
+      ['Carbone', carbon[rec] + ' kg CO₂e/m²', 'Intensité fictive. Une tour pèse plus lourd qu’un paysage, une année récente un peu moins.'],
+      ['Énergie', energy[rec] + ' kWh/m²/an', 'Consommation fictive, du même ordre que l’intensité carbone.'],
+      ['Accessibilité', String(access[rec]) + ' / 100', 'Note fictive : un logement ou un paysage est plus accueillant qu’une tour.'],
+      ['Qualité', GRADES[grade[rec]] + ' · ' + quality[rec] + ' / 100', 'La lettre résume le carbone. Le nombre résume la clarté de la fiche.']
     ];
     const html = '<p>Fiche d’une opération qui n’existe pas. Elle sert à lire une ligne du tableau.</p><dl class="kv">'
       + fields.map(field => '<dt>' + field[0] + '</dt><dd>' + field[1] + '</dd>').join('') + '</dl>';
@@ -1206,7 +1309,7 @@
     ]);
   }
   document.getElementById('about').addEventListener('click', () => {
-    openModal('Les données', '<p>Atlas ne charge aucun fichier et n’envoie rien. Les 100&nbsp;000 lignes sont inventées dans cette page, toujours avec le même tirage.</p><ul><li><b>Atelier</b> : le cabinet fictif.</li><li><b>Ville et région</b> : le lieu du projet.</li><li><b>Type</b> : musée, logement, campus, gare, tour ou paysage.</li><li><b>Statut</b> : livré, chantier, concours ou étude.</li><li><b>Année</b> : de 2015 à 2026.</li><li><b>Budget</b> : montant fictif en euros.</li><li><b>Surface</b> : mètres carrés fictifs.</li><li><b>Score</b> : note de 42 à 99, un peu plus haute pour un projet livré.</li></ul><p>Une pastille active garde sa catégorie. La désactiver retire ces lignes des diagrammes. Une ligne du tableau ou une barre ouvre une fiche, et le clavier reste dans la fenêtre jusqu’à Fermer ou Échap.</p>', []);
+    openModal('Les données', '<p>Atlas ne charge aucun fichier et n’envoie rien. Les 100&nbsp;000 lignes sont inventées dans cette page, toujours avec le même tirage.</p><ul><li><b>Atelier, ville, région, type, statut, année, budget, surface, score</b> : l’opération fictive.</li><li><b>Carbone</b> : kg CO₂e par m². Une tour pèse plus qu’un paysage, un projet récent un peu moins. La lettre A à G reprend l’idée de note d’EcoIndex, sans interroger ce service.</li><li><b>Énergie</b> : kWh par m² et par an, fictifs.</li><li><b>Accessibilité</b> : note sur 100, dans l’esprit des outils de l’Institut du Numérique Responsable, appliquée ici au bâtiment.</li><li><b>Qualité</b> : note sur 100, dans l’esprit d’une checklist Opquast : la fiche est-elle lisible, pas un audit du web.</li></ul><p>Ce n’est pas un résultat EcoIndex, GTmetrix, Alliance Green IT ou Opquast. Une pastille active garde sa catégorie. Une ligne ou une barre ouvre une fiche.</p>', []);
   });
   function paintPalette() {
     document.body.classList.toggle('cvd', cvd);
@@ -1216,7 +1319,7 @@
     document.getElementById('leg-budget').style.background = pal().budget;
     document.getElementById('leg-count').style.background = pal().count;
     document.querySelectorAll('button.chip').forEach(chip => {
-      const colors = chip.dataset.key === 'regions' ? pal().reg : chip.dataset.key === 'types' ? pal().type : pal().stat;
+      const colors = chip.dataset.key === 'regions' ? pal().reg : chip.dataset.key === 'types' ? pal().type : chip.dataset.key === 'grades' ? pal().grade : pal().stat;
       chip.style.setProperty('--c', colors[Number(chip.dataset.i)]);
     });
   }
@@ -1277,6 +1380,13 @@
     }
     openModal('Statut · ' + STATUSES[picked], '<p>' + shareText(view.byStatus[picked]) + ' Le statut dit où en est le projet fictif.</p>', [
       { label: 'Ne garder que ' + STATUSES[picked], run: () => keepOnly('statuses', picked) }
+    ]);
+  });
+  gradeC.addEventListener('click', event => {
+    const i = barIndex(gradeC, event, GRADES.length);
+    if (i < 0 || !view) return;
+    openModal('Carbone · ' + GRADES[i], '<p>' + shareText(view.byGrade[i]) + ' La lettre classe l’intensité carbone fictive, de A (la plus légère) à G.</p>', [
+      { label: 'Ne garder que ' + GRADES[i], run: () => keepOnly('grades', i) }
     ]);
   });
   heatC.addEventListener('click', event => {
