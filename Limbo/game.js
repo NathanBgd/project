@@ -77,6 +77,7 @@ class Game {
     this._lobbyError= '';      // message d'erreur lobby
     this._lobbyWaiting = false;// en attente de connexion
     this._lobbyCopied  = false; // feedback bouton copier
+    this._lobbyJoining = false; // client en cours de connexion (bloque double-join)
 
     // Menu buttons
     this._menuButtons = [
@@ -345,14 +346,13 @@ class Game {
       this.room._boonTriggered=true;
       this.roomsCleared++;
 
-      // ── Performance tracking → adaptive difficulty ────────
-      if (!this.room.isBoss) {
+      // ── Performance tracking → adaptive difficulty (infinit only) ────
+      // Only kicks in after depth 15 (after first full cycle = "vaincre Hadès")
+      if (!this.room.isBoss && this.depth > 15) {
         const clearTime = this.runTime - this._roomStartTime;
         this.roomClearTimes.push(clearTime);
-        // Use last 5 rooms to smooth out spikes
         const recent = this.roomClearTimes.slice(-5);
         const avg = recent.reduce((s, t) => s + t, 0) / recent.length;
-        // ref: 20s = ×1.0, 10s = ×1.4, 5s = ×1.8, 30s = ×0.85
         const raw = 20 / Math.max(4, avg);
         this.perfMult = Math.max(0.8, Math.min(3.0, raw));
         Logger.log('SYSTEM', `Room ${clearTime.toFixed(1)}s | avg ${avg.toFixed(1)}s | traque ×${this.perfMult.toFixed(2)}`);
@@ -678,137 +678,174 @@ class Game {
   _drawLobby(ctx) {
     ctx.fillStyle = '#05030f'; ctx.fillRect(0,0,W,H);
     ctx.fillStyle = '#ff8'; ctx.font = 'bold 32px Georgia'; ctx.textAlign = 'center';
-    ctx.fillText('🌐 MODE CO-OP', W/2, 120);
+    ctx.fillText('🌐 MODE CO-OP', W/2, 110);
+    ctx.fillStyle = '#a0a0c0'; ctx.font = '13px Georgia';
+    ctx.fillText('L\'hôte contrôle la simulation — ×2.5 difficulté à deux', W/2, 142);
 
-    ctx.fillStyle = '#a0a0c0'; ctx.font = '14px Georgia';
-    ctx.fillText('Deux joueurs, deux fois plus difficile. L\'hôte contrôle la partie.', W/2, 160);
+    const mx = Input.mouse.x, my = Input.mouse.y;
 
+    // ── ÉTAT : client en cours de connexion / connecté ───────
+    if (this._lobbyJoining) {
+      const pulse = 0.6 + Math.sin(Date.now() * 0.004) * 0.4;
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = this._lobbyError.startsWith('✓') ? '#4f4' : '#ff8';
+      ctx.font = 'bold 22px Georgia'; ctx.textAlign = 'center';
+      ctx.fillText(this._lobbyError || 'Connexion en cours…', W/2, H/2);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#555'; ctx.font = '12px Georgia';
+      ctx.fillText('La partie démarre automatiquement quand l\'hôte est prêt.', W/2, H/2 + 36);
+      // Annuler
+      const cx2=W/2-60, cy2=H/2+70;
+      const ch = hitTest(mx,my,cx2,cy2,120,32);
+      ctx.fillStyle = ch ? '#502020' : '#2a1010'; _roundRect(ctx,cx2,cy2,120,32,6); ctx.fill();
+      ctx.fillStyle='#f88'; ctx.font='12px Georgia'; ctx.textAlign='center';
+      ctx.fillText('Annuler', W/2, cy2+21);
+      if (ch && Input._leftJustPressed) {
+        Input._leftJustPressed=false;
+        Net.disconnect(); this._lobbyJoining=false; this._lobbyError='';
+      }
+      return;
+    }
+
+    // ── ÉTAT : hôte en attente de joueur ─────────────────────
     if (this._lobbyWaiting) {
-      ctx.fillStyle = '#4f4'; ctx.font = 'bold 20px Georgia';
-      ctx.fillText('Code de connexion :', W/2, 220);
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 48px monospace';
-      ctx.fillText(this._lobbyCode, W/2, 280);
+      ctx.fillStyle = '#4f4'; ctx.font = 'bold 18px Georgia'; ctx.textAlign='center';
+      ctx.fillText('Partage ce lien à ton ami :', W/2, 210);
 
-      // Bouton Copier le lien
-      const cpx=W/2-110, cpy=300;
-      const cpHov = hitTest(Input.mouse.x, Input.mouse.y, cpx, cpy, 220, 42);
-      ctx.fillStyle = this._lobbyCopied ? '#204020' : (cpHov ? '#304060' : '#1a2840');
-      _roundRect(ctx, cpx, cpy, 220, 42, 10); ctx.fill();
+      // Affiche le code en petit (UUID trop long pour 48px)
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      _roundRect(ctx, W/2-340, 225, 680, 36, 6); ctx.fill();
+      ctx.fillStyle = '#adf'; ctx.font = '14px monospace'; ctx.textAlign='center';
+      const shortLink = `${location.href.split('?')[0]}?join=${this._lobbyCode}`;
+      ctx.fillText(shortLink.length > 80 ? shortLink.slice(0,80)+'…' : shortLink, W/2, 248);
+
+      // Bouton copier
+      const cpx=W/2-120, cpy=272;
+      const cpH = hitTest(mx,my,cpx,cpy,240,44);
+      ctx.fillStyle = this._lobbyCopied ? '#1a4020' : (cpH ? '#1a3050' : '#101828');
+      _roundRect(ctx,cpx,cpy,240,44,10); ctx.fill();
       ctx.strokeStyle = this._lobbyCopied ? '#4f4' : '#4080ff';
-      ctx.lineWidth = 1.5; _roundRect(ctx, cpx, cpy, 220, 42, 10); ctx.stroke();
+      ctx.lineWidth=1.5; _roundRect(ctx,cpx,cpy,240,44,10); ctx.stroke();
       ctx.fillStyle = this._lobbyCopied ? '#4f4' : '#fff';
-      ctx.font = 'bold 15px Georgia'; ctx.textAlign = 'center';
-      ctx.fillText(this._lobbyCopied ? '✓ Lien copié !' : '📋 Copier le lien d\'invitation', W/2, cpy+27);
-
-      if (cpHov && Input._leftJustPressed) {
-        Input._leftJustPressed = false;
-        const base = location.href.split('?')[0];
-        const link = `${base}?join=${this._lobbyCode}`;
-        navigator.clipboard.writeText(link).then(() => {
-          this._lobbyCopied = true;
-          setTimeout(() => { this._lobbyCopied = false; }, 2000);
+      ctx.font = 'bold 15px Georgia'; ctx.textAlign='center';
+      ctx.fillText(this._lobbyCopied ? '✓ Copié !' : '📋 Copier le lien d\'invitation', W/2, cpy+28);
+      if (cpH && Input._leftJustPressed) {
+        Input._leftJustPressed=false;
+        navigator.clipboard.writeText(shortLink).then(() => {
+          this._lobbyCopied=true; setTimeout(()=>{ this._lobbyCopied=false; },2500);
         });
       }
 
-      ctx.fillStyle = '#888'; ctx.font = '12px Georgia';
-      ctx.fillText('Partage ce lien — ton ami clique dessus et rejoint directement.', W/2, 358);
-      ctx.fillStyle = '#ff8'; ctx.font = '14px Georgia';
-      ctx.fillText('En attente de connexion…', W/2, 385);
+      ctx.fillStyle = '#888'; ctx.font = '12px Georgia'; ctx.textAlign='center';
+      ctx.fillText('Ton ami clique le lien → la partie démarre automatiquement', W/2, 334);
 
-      // Cancel button
-      const bx=W/2-70, by=415;
-      const hov = hitTest(Input.mouse.x, Input.mouse.y, bx, by, 140, 36);
-      ctx.fillStyle = hov ? '#502020' : '#301010';
-      _roundRect(ctx,bx,by,140,36,8); ctx.fill();
-      ctx.fillStyle='#f88'; ctx.font='13px Georgia';
-      ctx.fillText('Annuler', W/2, by+23);
-      if (hov && Input._leftJustPressed) {
+      // Pulse "en attente"
+      const p2 = 0.5 + Math.sin(Date.now()*0.003)*0.5;
+      ctx.globalAlpha = p2;
+      ctx.fillStyle = '#ff8'; ctx.font = '15px Georgia';
+      ctx.fillText('⏳ En attente de connexion…', W/2, 365);
+      ctx.globalAlpha = 1;
+
+      const bx=W/2-65, by=395;
+      const bH=hitTest(mx,my,bx,by,130,34);
+      ctx.fillStyle=bH?'#502020':'#2a1010'; _roundRect(ctx,bx,by,130,34,8); ctx.fill();
+      ctx.fillStyle='#f88'; ctx.font='13px Georgia'; ctx.textAlign='center';
+      ctx.fillText('Annuler', W/2, by+22);
+      if (bH && Input._leftJustPressed) {
         Input._leftJustPressed=false;
         Net.disconnect(); this._lobbyWaiting=false; this._lobbyCode=''; this._lobbyCopied=false;
       }
       return;
     }
 
-    // Bouton Héberger
-    const hbx=W/2-130, hby=220;
-    const hHov = hitTest(Input.mouse.x, Input.mouse.y, hbx, hby, 240, 52);
-    ctx.fillStyle = hHov ? '#204080' : '#102040';
-    _roundRect(ctx,hbx,hby,240,52,10); ctx.fill();
-    ctx.strokeStyle='#4080ff'; ctx.lineWidth=1.5; _roundRect(ctx,hbx,hby,240,52,10); ctx.stroke();
-    ctx.fillStyle='#fff'; ctx.font='bold 18px Georgia'; ctx.textAlign='center';
-    ctx.fillText('🏠 Héberger la partie', W/2, hby+33);
+    // ── ÉTAT : choix initial ──────────────────────────────────
 
-    if (hHov && Input._leftJustPressed) {
+    // Bouton Héberger
+    const hbx=W/2-130, hby=200;
+    const hH = hitTest(mx,my,hbx,hby,260,54);
+    ctx.fillStyle = hH ? '#1a3560' : '#0d1f3a';
+    _roundRect(ctx,hbx,hby,260,54,12); ctx.fill();
+    ctx.strokeStyle='#4080ff'; ctx.lineWidth=1.5; _roundRect(ctx,hbx,hby,260,54,12); ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.font='bold 18px Georgia'; ctx.textAlign='center';
+    ctx.fillText('🏠 Héberger la partie', W/2, hby+34);
+    if (hH && Input._leftJustPressed) {
       Input._leftJustPressed=false;
       this._lobbyWaiting=true;
       Net.host().then(code => {
         this._lobbyCode = code;
         Net.onConnect(() => {
-          // P2 connected! Start coop run
           Net.onMessage(data => this._handleNetMessage(data));
           this.coopMode = true;
-          const seed = this.runSeed || ((Math.random()*0x7FFFFFFF)>>>0);
-          Net.send({ type:'start', seed, depth:1 });
+          const seed = (Math.random()*0x7FFFFFFF)>>>0;
+          Net.send({ type:'start', seed });
           if (this._lobbyKeyHandler) { window.removeEventListener('keydown', this._lobbyKeyHandler); this._lobbyListening=false; }
           this._doFade(1,()=>{ this.startCoopRun(seed); this._doFade(-1,null); });
         });
-      }).catch(e => { this._lobbyError = 'Erreur: '+e.message; this._lobbyWaiting=false; });
+      }).catch(e => { this._lobbyError='Erreur: '+e.message; this._lobbyWaiting=false; });
     }
 
-    // Zone saisie code
-    ctx.fillStyle = '#a0a0c0'; ctx.font = '14px Georgia'; ctx.textAlign='center';
-    ctx.fillText('— ou rejoindre avec un code —', W/2, 310);
+    // Séparateur
+    ctx.fillStyle='#333'; ctx.fillRect(W/2-140,272,280,1);
+    ctx.fillStyle='#666'; ctx.font='12px Georgia'; ctx.textAlign='center';
+    ctx.fillText('— ou rejoindre avec un code —', W/2, 292);
 
-    const ibx=W/2-120, iby=325;
-    const iHov = hitTest(Input.mouse.x, Input.mouse.y, ibx, iby, 240, 40);
-    ctx.fillStyle = iHov ? '#221848' : '#1a1535';
-    _roundRect(ctx,ibx,iby,240,40,6); ctx.fill();
-    ctx.strokeStyle = iHov ? '#8060ff' : '#5040a0'; ctx.lineWidth=1;
-    _roundRect(ctx,ibx,iby,240,40,6); ctx.stroke();
-    ctx.fillStyle='#fff'; ctx.font='bold 20px monospace'; ctx.textAlign='center';
-    ctx.fillText(this._lobbyInput || '📋 coller le code…', W/2, iby+27);
-    // Clic sur le champ = coller depuis presse-papier
-    if (iHov && Input._leftJustPressed) {
+    // Champ code (clic = coller)
+    const ibx=W/2-140, iby=304;
+    const iH = hitTest(mx,my,ibx,iby,280,42);
+    ctx.fillStyle = iH ? '#1e1545' : '#141030';
+    _roundRect(ctx,ibx,iby,280,42,8); ctx.fill();
+    ctx.strokeStyle = iH ? '#8060ff' : '#3a2880'; ctx.lineWidth=1;
+    _roundRect(ctx,ibx,iby,280,42,8); ctx.stroke();
+    ctx.fillStyle = this._lobbyInput ? '#fff' : '#555';
+    ctx.font = this._lobbyInput ? '13px monospace' : '13px Georgia';
+    ctx.textAlign='center';
+    // Truncate long UUID for display
+    const dispCode = this._lobbyInput.length > 36 ? this._lobbyInput.slice(0,34)+'…' : (this._lobbyInput || '📋 Cliquer pour coller le code');
+    ctx.fillText(dispCode, W/2, iby+26);
+    if (iH && Input._leftJustPressed) {
       Input._leftJustPressed=false;
-      navigator.clipboard.readText().then(text => {
-        const clean = text.trim();
-        if (clean.length > 3) this._lobbyInput = clean;
-      }).catch(() => {}); // permission refusée silencieuse
+      navigator.clipboard.readText().then(txt => {
+        const c = txt.trim(); if (c.length > 3) this._lobbyInput = c;
+      }).catch(()=>{});
     }
 
-    const jbx=W/2-80, jby=378;
-    const jHov = hitTest(Input.mouse.x, Input.mouse.y, jbx, jby, 160, 40);
-    ctx.fillStyle = this._lobbyInput.length > 3 ? (jHov?'#405020':'#203010') : '#1a1535';
-    _roundRect(ctx,jbx,jby,160,40,8); ctx.fill();
-    ctx.fillStyle = this._lobbyInput.length > 3 ? '#8f8' : '#555'; ctx.font='bold 16px Georgia'; ctx.textAlign='center';
-    ctx.fillText('🔗 Rejoindre', W/2, jby+27);
-
-    if (jHov && Input._leftJustPressed && this._lobbyInput.length > 3) {
+    // Bouton rejoindre
+    const jbx=W/2-100, jby=358;
+    const canJoin = this._lobbyInput.length > 3;
+    const jH = hitTest(mx,my,jbx,jby,200,44);
+    ctx.fillStyle = canJoin ? (jH?'#304820':'#1c2e10') : '#141414';
+    _roundRect(ctx,jbx,jby,200,44,10); ctx.fill();
+    ctx.strokeStyle = canJoin ? '#6f4' : '#333'; ctx.lineWidth=1.5;
+    _roundRect(ctx,jbx,jby,200,44,10); ctx.stroke();
+    ctx.fillStyle = canJoin ? '#8f8' : '#444';
+    ctx.font='bold 16px Georgia'; ctx.textAlign='center';
+    ctx.fillText('🔗 Rejoindre', W/2, jby+29);
+    if (jH && Input._leftJustPressed && canJoin) {
       Input._leftJustPressed=false;
-      this._lobbyError = 'Connexion en cours…';
+      this._lobbyJoining=true; this._lobbyError='Connexion en cours…';
       Net.join(this._lobbyInput).then(() => {
         Net.onMessage(data => this._handleNetMessage(data));
-        this._lobbyError = '✓ Connecté — en attente de l\'hôte…';
+        this._lobbyError='✓ Connecté — la partie démarre quand l\'hôte lance…';
         if (this._lobbyKeyHandler) { window.removeEventListener('keydown', this._lobbyKeyHandler); this._lobbyListening=false; }
-      }).catch(e => { this._lobbyError = 'Erreur: '+e.message; });
+      }).catch(e => { this._lobbyError='Erreur: '+e.message; this._lobbyJoining=false; });
     }
 
     if (this._lobbyError) {
-      ctx.fillStyle = this._lobbyError.startsWith('Err') ? '#f44' : '#ff8';
-      ctx.font='13px Georgia'; ctx.textAlign='center';
-      ctx.fillText(this._lobbyError, W/2, 435);
+      ctx.fillStyle = this._lobbyError.startsWith('Err') ? '#f55' : '#ff8';
+      ctx.font='12px Georgia'; ctx.textAlign='center';
+      ctx.fillText(this._lobbyError, W/2, 420);
     }
 
-    // Back button
-    const bbx=W/2-60, bby=460;
-    const bHov=hitTest(Input.mouse.x,Input.mouse.y,bbx,bby,120,34);
-    ctx.fillStyle=bHov?'#302030':'#201020'; _roundRect(ctx,bbx,bby,120,34,6); ctx.fill();
-    ctx.fillStyle='#888'; ctx.font='13px Georgia'; ctx.textAlign='center';
-    ctx.fillText('← Retour', W/2, bby+22);
-    if (bHov && Input._leftJustPressed) {
+    // Retour
+    const rbx=W/2-55, rby=445;
+    const rH=hitTest(mx,my,rbx,rby,110,30);
+    ctx.fillStyle=rH?'#2a1030':'#160820'; _roundRect(ctx,rbx,rby,110,30,6); ctx.fill();
+    ctx.fillStyle='#666'; ctx.font='12px Georgia'; ctx.textAlign='center';
+    ctx.fillText('← Retour', W/2, rby+20);
+    if (rH && Input._leftJustPressed) {
       Input._leftJustPressed=false;
       if(this._lobbyKeyHandler){window.removeEventListener('keydown',this._lobbyKeyHandler);this._lobbyListening=false;}
-      this.state=STATE.MENU;
+      Net.disconnect(); this.state=STATE.MENU;
     }
   }
 
