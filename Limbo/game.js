@@ -40,7 +40,13 @@ class Game {
     if (_joinParam) {
       history.replaceState(null, '', location.pathname);
       this._lobbyInput = _joinParam;
+      this._lobbyError = 'Connexion en cours…';
       this.state = STATE.LOBBY;
+      // Auto-trigger join immediately
+      Net.join(_joinParam).then(() => {
+        Net.onMessage(data => this._handleNetMessage(data));
+        this._lobbyError = '✓ Connecté — en attente de l\'hôte…';
+      }).catch(e => { this._lobbyError = 'Erreur : ' + e.message; });
     }
     this.player  = null;
     this.room    = null;
@@ -754,10 +760,21 @@ class Game {
     ctx.fillText('— ou rejoindre avec un code —', W/2, 310);
 
     const ibx=W/2-120, iby=325;
-    ctx.fillStyle='#1a1535'; _roundRect(ctx,ibx,iby,240,40,6); ctx.fill();
-    ctx.strokeStyle='#5040a0'; ctx.lineWidth=1; _roundRect(ctx,ibx,iby,240,40,6); ctx.stroke();
+    const iHov = hitTest(Input.mouse.x, Input.mouse.y, ibx, iby, 240, 40);
+    ctx.fillStyle = iHov ? '#221848' : '#1a1535';
+    _roundRect(ctx,ibx,iby,240,40,6); ctx.fill();
+    ctx.strokeStyle = iHov ? '#8060ff' : '#5040a0'; ctx.lineWidth=1;
+    _roundRect(ctx,ibx,iby,240,40,6); ctx.stroke();
     ctx.fillStyle='#fff'; ctx.font='bold 20px monospace'; ctx.textAlign='center';
-    ctx.fillText(this._lobbyInput || '...', W/2, iby+27);
+    ctx.fillText(this._lobbyInput || '📋 coller le code…', W/2, iby+27);
+    // Clic sur le champ = coller depuis presse-papier
+    if (iHov && Input._leftJustPressed) {
+      Input._leftJustPressed=false;
+      navigator.clipboard.readText().then(text => {
+        const clean = text.trim();
+        if (clean.length > 3) this._lobbyInput = clean;
+      }).catch(() => {}); // permission refusée silencieuse
+    }
 
     const jbx=W/2-80, jby=378;
     const jHov = hitTest(Input.mouse.x, Input.mouse.y, jbx, jby, 160, 40);
@@ -771,6 +788,7 @@ class Game {
       this._lobbyError = 'Connexion en cours…';
       Net.join(this._lobbyInput).then(() => {
         Net.onMessage(data => this._handleNetMessage(data));
+        this._lobbyError = '✓ Connecté — en attente de l\'hôte…';
         if (this._lobbyKeyHandler) { window.removeEventListener('keydown', this._lobbyKeyHandler); this._lobbyListening=false; }
       }).catch(e => { this._lobbyError = 'Erreur: '+e.message; });
     }
