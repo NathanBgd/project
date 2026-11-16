@@ -512,15 +512,18 @@ class UpgradeShopScreen {
 
   // 2-column layout: returns { col, row, cardX, cardY, cardW, cardH }
   _cardLayout(i) {
-    const cols = PERMANENT_UPGRADES.length > 7 ? 2 : 1;
-    const col  = i % cols;
-    const row  = Math.floor(i / cols);
+    const cols  = PERMANENT_UPGRADES.length > 7 ? 2 : 1;
+    const col   = i % cols;
+    const row   = Math.floor(i / cols);
     const cardW = cols === 2 ? Math.floor((W - 100) / 2) : W - 80;
-    const cardH = 64;
-    const gap   = 8;
-    const startX = cols === 2 ? 40 : 40;
-    const startY = 80;
-    const colX = startX + col * (cardW + 20);
+    const rows  = Math.ceil(PERMANENT_UPGRADES.length / cols);
+    // Fit all rows + 70px footer into the panel (H-20 panel, 70px header)
+    const available = H - 20 - 70 - 70; // panel height - header - footer
+    const cardH = Math.min(60, Math.floor((available - (rows - 1) * 6) / rows));
+    const gap   = 6;
+    const startX = 40;
+    const startY = 70;
+    const colX  = startX + col * (cardW + 20);
     return { col, row, cardX: colX, cardY: startY + row * (cardH + gap), cardW, cardH };
   }
 
@@ -631,29 +634,34 @@ class UpgradeShopScreen {
         drawButton(ctx, bx, by, bw, bh, label, hov && isBuyable, isBuyable ? '#5040a0' : '#2a2050', isBuyable ? '#fff' : '#666');
       }
 
-      // Flavor text on hover
+      // Flavor text on hover — affiché à l'intérieur de la carte en bas
       if (hov && !isMax && up.flavor) {
-        ctx.fillStyle = 'rgba(255,255,180,0.6)'; ctx.font = 'italic 10px Georgia'; ctx.textAlign = 'left';
-        ctx.fillText(up.flavor, cardX + 10, cardY + cardH + 5);
+        ctx.fillStyle = 'rgba(255,255,180,0.5)'; ctx.font = 'italic 9px Georgia'; ctx.textAlign = 'left';
+        ctx.fillText(up.flavor.slice(0, 70), cardX + 44, cardY + cardH - 4);
       }
     }
 
-    // Total souls spent
-    ctx.fillStyle = 'rgba(200,180,255,0.5)'; ctx.font = '12px Georgia'; ctx.textAlign = 'left';
-    ctx.fillText(`Âmes dépensées au total : ${soulsSpent}`, 50, H - 72);
+    // Footer — calé sous la dernière rangée de cartes
+    const rows = Math.ceil(PERMANENT_UPGRADES.length / 2);
+    const { cardH, cardY: lastCardY } = this._cardLayout(PERMANENT_UPGRADES.length - 1);
+    const footerY = lastCardY + cardH + 14;
 
-    // Feedback message
+    ctx.fillStyle = 'rgba(200,180,255,0.5)'; ctx.font = '12px Georgia'; ctx.textAlign = 'left';
+    ctx.fillText(`Âmes dépensées au total : ${soulsSpent}`, 50, footerY);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.font = '11px Georgia';
+    ctx.fillText('Conseil : jouez des runs pour accumuler des Âmes', 50, footerY + 18);
+
+    // Feedback message (par-dessus tout, centré)
     if (this.feedback && this.feedbackTimer > 0) {
       const a = Math.min(1, this.feedbackTimer);
       ctx.globalAlpha = a;
       ctx.fillStyle = this.feedback.color; ctx.font = 'bold 16px Georgia'; ctx.textAlign = 'center';
-      ctx.fillText(this.feedback.msg, W/2, H - 50);
+      ctx.shadowColor = this.feedback.color; ctx.shadowBlur = 10;
+      ctx.fillText(this.feedback.msg, W/2, footerY + 16);
+      ctx.shadowBlur = 0;
       ctx.globalAlpha = 1;
     }
-
-    // Tip
-    ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.font = '11px Georgia'; ctx.textAlign = 'left';
-    ctx.fillText('Conseil : jouez des runs pour accumuler des Âmes', 50, H - 55);
 
     // Close
     const usBtnX = W-110, usBtnY = 14, usBtnW = 90, usBtnH = 34;
