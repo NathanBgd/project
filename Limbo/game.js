@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v1.6.0';
+const VERSION = 'v1.7.0';
 
 const STATE = {
   MENU:'menu', GRIMOIRE:'grimoire', GUIDE:'guide', UPGRADES:'upgrades',
@@ -47,7 +47,10 @@ class Game {
       // Auto-trigger join immediately
       Net.join(_joinParam).then(() => {
         Net.onMessage(data => this._handleNetMessage(data));
-        this._lobbyError = '✓ Connecté — en attente de l\'hôte…';
+        this._lobbyJoining = false;
+        this._lobbyNamePhase = true;
+        this._myName = ''; this._p2Name = '';
+        this._myNameReady = false; this._p2NameReady = false;
       }).catch(e => { this._lobbyError = 'Erreur : ' + e.message; });
     }
     this.player  = null;
@@ -93,6 +96,13 @@ class Game {
     this._lobbyWaiting = false;// en attente de connexion
     this._lobbyCopied  = false; // feedback bouton copier
     this._lobbyJoining = false; // client en cours de connexion (bloque double-join)
+    this._lobbyNamePhase = false; // phase saisie des pseudos
+    this._myName      = '';    // pseudo du joueur local
+    this._p2Name      = '';    // pseudo de l'autre joueur (reçu réseau)
+    this._myNameReady = false; // joueur local a validé son pseudo
+    this._p2NameReady = false; // autre joueur a validé son pseudo
+    this.p1Name = 'Joueur 1'; // noms conservés pour l'affichage en jeu
+    this.p2Name = 'Joueur 2';
 
     // Menu buttons
     this._menuButtons = [
@@ -1227,11 +1237,151 @@ class Game {
       this._lobbyListening = true;
       this._lobbyKeyHandler = (e) => {
         if (this.state !== STATE.LOBBY) return;
-        if (e.key === 'Backspace') { this._lobbyInput = this._lobbyInput.slice(0,-1); return; }
-        if (e.key === 'Escape') { this._lobbyInput=''; this._lobbyError=''; this.state=STATE.MENU; return; }
-        if (e.key.length === 1) this._lobbyInput += e.key;
+        if (this._lobbyNamePhase) {
+          if (e.key === 'Backspace') { this._myName = this._myName.slice(0,-1); this._sendNameUpdate(); return; }
+          if (e.key === 'Enter')     { this._confirmMyName(); return; }
+          if (e.key === 'Escape')    { return; }
+          if (e.key.length === 1 && this._myName.length < 16) { this._myName += e.key; this._sendNameUpdate(); }
+        } else {
+          if (e.key === 'Backspace') { this._lobbyInput = this._lobbyInput.slice(0,-1); return; }
+          if (e.key === 'Escape') { this._lobbyInput=''; this._lobbyError=''; this.state=STATE.MENU; return; }
+          if (e.key.length === 1) this._lobbyInput += e.key;
+        }
       };
       window.addEventListener('keydown', this._lobbyKeyHandler);
+    }
+  }
+
+  _sendNameUpdate() {
+    Net.send({ type: 'name_update', name: this._myName });
+  }
+
+  _confirmMyName() {
+    const name = this._myName.trim();
+    if (!name) return;
+    this._myNameReady = true;
+    Net.send({ type: 'name_ready', name });
+    if (Net.isHost) this._checkBothReady();
+  }
+
+  _checkBothReady() {
+    if (!Net.isHost || !this._myNameReady || !this._p2NameReady) return;
+    const seed = (Math.random() * 0x7FFFFFFF) >>> 0;
+    this.p1Name = this._myName.trim() || 'Hôte';
+    this.p2Name = this._p2Name.trim() || 'Client';
+    Net.send({ type: 'start', seed, hostName: this.p1Name, clientName: this.p2Name });
+    if (this._lobbyKeyHandler) { window.removeEventListener('keydown', this._lobbyKeyHandler); this._lobbyListening = false; }
+    this._lobbyNamePhase = false;
+    this._doFade(1, () => { this.startCoopRun(seed); this._doFade(-1, null); });
+  }
+
+  _drawNamePhase(ctx, mx, my) {
+    const W2 = W/2, cardW = 320, cardH = 260, gap = 60;
+    const leftX  = W2 - gap/2 - cardW;
+    const rightX = W2 + gap/2;
+    const cardY  = H/2 - cardH/2 - 20;
+
+    // Titre
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff8'; ctx.font = 'bold 26px Georgia';
+    ctx.shadowColor = '#c0a040'; ctx.shadowBlur = 18;
+    ctx.fillText('ENTREZ VOS PSEUDOS', W2, cardY - 42);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = '13px Georgia';
+    ctx.fillText('Les deux joueurs doivent valider pour lancer la partie', W2, cardY - 16);
+
+    const drawCard = (x, label, name, ready, isMe) => {
+      // Fond carte
+      ctx.fillStyle = ready ? 'rgba(20,60,20,0.9)' : (isMe ? 'rgba(20,20,50,0.9)' : 'rgba(10,10,30,0.7)');
+      _roundRect(ctx, x, cardY, cardW, cardH, 14); ctx.fill();
+      ctx.strokeStyle = ready ? '#4f4' : (isMe ? '#6060c0' : '#303060');
+      ctx.lineWidth = ready ? 2.5 : 1.5;
+      _roundRect(ctx, x, cardY, cardW, cardH, 14); ctx.stroke();
+
+      // Bande couleur en haut
+      ctx.save();
+      ctx.beginPath(); _roundRect(ctx, x, cardY, cardW, 8, 14); ctx.clip();
+      ctx.fillStyle = ready ? '#4f4' : (isMe ? '#6060ff' : '#404080');
+      ctx.fillRect(x, cardY, cardW, 8);
+      ctx.restore();
+
+      // Label
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = 'bold 11px Georgia';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, x + cardW/2, cardY + 30);
+
+      // Icône joueur
+      ctx.font = '32px serif';
+      ctx.fillText(isMe ? '🧑' : '👤', x + cardW/2, cardY + 76);
+
+      // Nom (champ de saisie pour moi, texte pour l'autre)
+      if (isMe) {
+        const fieldY = cardY + 100;
+        const focused = !this._myNameReady;
+        ctx.fillStyle = focused ? 'rgba(60,60,120,0.8)' : 'rgba(20,40,20,0.8)';
+        _roundRect(ctx, x + 20, fieldY, cardW - 40, 38, 8); ctx.fill();
+        ctx.strokeStyle = focused ? '#8080ff' : '#4f4'; ctx.lineWidth = 1.5;
+        _roundRect(ctx, x + 20, fieldY, cardW - 40, 38, 8); ctx.stroke();
+        // Texte + curseur clignotant
+        const displayName = name || '';
+        const cursor = focused && Math.floor(Date.now() / 500) % 2 === 0 ? '|' : '';
+        ctx.fillStyle = displayName ? '#fff' : '#666';
+        ctx.font = '15px Georgia'; ctx.textAlign = 'center';
+        ctx.fillText((displayName || 'Votre pseudo…') + cursor, x + cardW/2, fieldY + 24);
+      } else {
+        ctx.fillStyle = name ? '#fff' : 'rgba(255,255,255,0.3)';
+        ctx.font = name ? 'bold 17px Georgia' : 'italic 13px Georgia';
+        ctx.textAlign = 'center';
+        const pulse = 0.5 + Math.sin(Date.now() * 0.004) * 0.5;
+        if (!name) ctx.globalAlpha = 0.4 + pulse * 0.4;
+        ctx.fillText(name || '⏳ En saisie…', x + cardW/2, cardY + 118);
+        ctx.globalAlpha = 1;
+      }
+
+      // Statut
+      if (ready) {
+        ctx.fillStyle = '#4f4'; ctx.font = 'bold 13px Georgia'; ctx.textAlign = 'center';
+        ctx.fillText('✓ PRÊT', x + cardW/2, cardY + 170);
+      } else if (isMe) {
+        // Bouton Valider
+        const btnX = x + 40, btnY = cardY + 194, btnW2 = cardW - 80, btnH2 = 38;
+        const hov = hitTest(mx, my, btnX, btnY, btnW2, btnH2);
+        const canConfirm = this._myName.trim().length > 0;
+        ctx.fillStyle = canConfirm ? (hov ? '#304830' : '#1e3020') : '#1a1a1a';
+        _roundRect(ctx, btnX, btnY, btnW2, btnH2, 8); ctx.fill();
+        ctx.strokeStyle = canConfirm ? '#6f4' : '#333'; ctx.lineWidth = 1.5;
+        _roundRect(ctx, btnX, btnY, btnW2, btnH2, 8); ctx.stroke();
+        ctx.fillStyle = canConfirm ? '#8f8' : '#555'; ctx.font = 'bold 14px Georgia';
+        ctx.fillText('✓ Valider (Entrée)', x + cardW/2, btnY + 24);
+        if (canConfirm && hov && Input._leftJustPressed) {
+          Input._leftJustPressed = false;
+          this._confirmMyName();
+        }
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '12px Georgia'; ctx.textAlign = 'center';
+        ctx.fillText('En attente…', x + cardW/2, cardY + 170);
+      }
+    };
+
+    if (Net.isHost) {
+      drawCard(leftX,  '👑 HÔTE (toi)',   this._myName, this._myNameReady, true);
+      drawCard(rightX, '🔗 CLIENT',        this._p2Name, this._p2NameReady, false);
+    } else {
+      drawCard(leftX,  '👑 HÔTE',          this._p2Name, this._p2NameReady, false);
+      drawCard(rightX, '🔗 CLIENT (toi)',  this._myName, this._myNameReady, true);
+    }
+
+    // Message "les deux sont prêts"
+    if (this._myNameReady && this._p2NameReady) {
+      const pulse = 0.7 + Math.sin(Date.now() * 0.005) * 0.3;
+      ctx.save(); ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#ff8'; ctx.font = 'bold 20px Georgia'; ctx.textAlign = 'center';
+      ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 20;
+      ctx.fillText('⚔  Les deux joueurs sont prêts — la partie démarre !', W2, cardY + cardH + 46);
+      ctx.shadowBlur = 0; ctx.restore();
+    } else if (Net.isHost && !this._myNameReady && !this._p2NameReady) {
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '12px Georgia'; ctx.textAlign = 'center';
+      ctx.fillText('Les deux joueurs doivent valider leur pseudo pour commencer', W2, cardY + cardH + 36);
     }
   }
 
@@ -1243,6 +1393,12 @@ class Game {
     ctx.fillText('L\'hôte contrôle la simulation — ×2.5 difficulté à deux', W/2, 142);
 
     const mx = Input.mouse.x, my = Input.mouse.y;
+
+    // ── ÉTAT : saisie des pseudos ─────────────────────────────
+    if (this._lobbyNamePhase) {
+      this._drawNamePhase(ctx, mx, my);
+      return;
+    }
 
     // ── ÉTAT : client en cours de connexion / connecté ───────
     if (this._lobbyJoining) {
@@ -1336,10 +1492,11 @@ class Game {
         Net.onConnect(() => {
           Net.onMessage(data => this._handleNetMessage(data));
           this.coopMode = true;
-          const seed = (Math.random()*0x7FFFFFFF)>>>0;
-          Net.send({ type:'start', seed });
-          if (this._lobbyKeyHandler) { window.removeEventListener('keydown', this._lobbyKeyHandler); this._lobbyListening=false; }
-          this._doFade(1,()=>{ this.startCoopRun(seed); this._doFade(-1,null); });
+          // Passer en phase pseudo — plus de démarrage automatique
+          this._lobbyWaiting = false;
+          this._lobbyNamePhase = true;
+          this._myName = ''; this._p2Name = '';
+          this._myNameReady = false; this._p2NameReady = false;
         });
       }).catch(e => { this._lobbyError='Erreur: '+e.message; this._lobbyWaiting=false; });
     }
@@ -1385,8 +1542,10 @@ class Game {
       this._lobbyJoining=true; this._lobbyError='Connexion en cours…';
       Net.join(this._lobbyInput).then(() => {
         Net.onMessage(data => this._handleNetMessage(data));
-        this._lobbyError='✓ Connecté — la partie démarre quand l\'hôte lance…';
-        if (this._lobbyKeyHandler) { window.removeEventListener('keydown', this._lobbyKeyHandler); this._lobbyListening=false; }
+        this._lobbyJoining = false;
+        this._lobbyNamePhase = true;
+        this._myName = ''; this._p2Name = '';
+        this._myNameReady = false; this._p2NameReady = false;
       }).catch(e => { this._lobbyError='Erreur: '+e.message; this._lobbyJoining=false; });
     }
 
@@ -1410,9 +1569,23 @@ class Game {
   }
 
   _handleNetMessage(data) {
+    if (data.type === 'name_update') {
+      this._p2Name = data.name || '';
+      return;
+    }
+    if (data.type === 'name_ready') {
+      this._p2Name = data.name || '';
+      this._p2NameReady = true;
+      if (Net.isHost) this._checkBothReady();
+      return;
+    }
     if (data.type === 'start' && !Net.isHost) {
       // Client received start signal from host
       this.coopMode = true;
+      this.p1Name = data.hostName   || 'Hôte';
+      this.p2Name = data.clientName || 'Client';
+      this._lobbyNamePhase = false;
+      if (this._lobbyKeyHandler) { window.removeEventListener('keydown', this._lobbyKeyHandler); this._lobbyListening = false; }
       this._doFade(1,()=>{ this.startCoopRun(data.seed); this._doFade(-1,null); });
       return;
     }
