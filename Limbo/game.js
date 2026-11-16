@@ -1,5 +1,7 @@
 'use strict';
 
+const VERSION = 'v1.6.0';
+
 const STATE = {
   MENU:'menu', GRIMOIRE:'grimoire', GUIDE:'guide', UPGRADES:'upgrades',
   PLAYING:'playing', BOON_PICK:'boon_pick',
@@ -652,6 +654,13 @@ class Game {
     ctx.restore();
     if (this.fade>0) { ctx.fillStyle=`rgba(0,0,0,${this.fade})`; ctx.fillRect(0,0,W,H); }
     Logger.drawOverlay(this.ctx);
+    // Version badge — toujours visible en haut à gauche
+    this.ctx.save();
+    this.ctx.textAlign = 'left';
+    this.ctx.font = '10px monospace';
+    this.ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    this.ctx.fillText(VERSION, 8, 14);
+    this.ctx.restore();
   }
 
   _handleMenuClick(mx, my) {
