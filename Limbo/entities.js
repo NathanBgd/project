@@ -1098,6 +1098,118 @@ class Golem extends Enemy {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  SENTINEL — stationary turret, fires 3 rotating bullets
+// ═══════════════════════════════════════════════════════════
+class Sentinel extends Enemy {
+  constructor(x, y, depth = 1) {
+    const iScale = infiniteScale(depth);
+    super(x, y, 20, Math.round((70 + depth * 10) * iScale), 0, '#008880');
+    this.rotAngle  = rand(0, TAU);
+    this.rotSpeed  = 0.9 + depth * 0.03;
+    this.shootTimer = rand(0.3, 0.8);
+    this.shootInterval = Math.max(0.35, 0.9 - depth * 0.02);
+    this.dmg = Math.round((11 + depth * 1.3) * iScale);
+    this.armorSegs = 1; this.maxArmorSegs = 1;
+  }
+  update(dt, player, obstacles, projectiles) {
+    this.baseUpdate(dt, player, obstacles);
+    this.rotAngle += this.rotSpeed * dt;
+    this.shootTimer -= dt;
+    if (this.shootTimer <= 0) {
+      this.shootTimer = this.shootInterval;
+      for (let i = 0; i < 3; i++) {
+        const a = this.rotAngle + (i / 3) * TAU;
+        const proj = new Projectile(
+          this.pos.x, this.pos.y,
+          Math.cos(a)*200, Math.sin(a)*200, 7, this.dmg, false, '#00ffe0'
+        );
+        proj.sourceEnemy = this;
+        projectiles.push(proj);
+      }
+    }
+  }
+  draw(ctx) {
+    this.drawBase(ctx);
+    ctx.save();
+    ctx.strokeStyle = '#00ffe0'; ctx.lineWidth = 2;
+    ctx.shadowColor = '#00ffe0'; ctx.shadowBlur = 12;
+    for (let i = 0; i < 3; i++) {
+      const a = this.rotAngle + (i/3)*TAU;
+      const ex = this.pos.x + Math.cos(a)*(this.r+18);
+      const ey = this.pos.y + Math.sin(a)*(this.r+18);
+      ctx.beginPath(); ctx.moveTo(this.pos.x, this.pos.y);
+      ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ex, ey, 4, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  NECROMANCER — kites player, fires slow projectiles, revives dead allies
+// ═══════════════════════════════════════════════════════════
+class Necromancer extends Enemy {
+  constructor(x, y, depth = 1) {
+    const iScale = infiniteScale(depth);
+    super(x, y, 15, Math.round((40 + depth * 5) * iScale), 55, '#5020a0');
+    this.depth      = depth;
+    this.shootTimer = rand(2, 3.5);
+    this.summonTimer = rand(6, 9);
+    this.summonCd   = 10;
+    this.dmg        = Math.round((10 + depth * 1.5) * iScale);
+    this.idealRange = 350;
+    this._reviveGlow = 0;
+  }
+  update(dt, player, obstacles, projectiles) {
+    this.baseUpdate(dt, player, obstacles);
+    const dist = this.pos.dist(player.pos);
+    if (this.stunTimer <= 0) {
+      const dir = player.pos.sub(this.pos);
+      if (dist < this.idealRange - 50) {
+        this.pos.x -= dir.norm().x * this.effectiveSpeed * dt;
+        this.pos.y -= dir.norm().y * this.effectiveSpeed * dt;
+      } else if (dist > this.idealRange + 50) {
+        this.pos.x += dir.norm().x * this.effectiveSpeed * 0.5 * dt;
+        this.pos.y += dir.norm().y * this.effectiveSpeed * 0.5 * dt;
+      }
+    }
+    this.shootTimer -= dt;
+    if (this.shootTimer <= 0 && dist < 500) {
+      this.shootTimer = rand(2, 3.5);
+      const dir = player.pos.sub(this.pos).norm();
+      const proj = new Projectile(
+        this.pos.x + dir.x*(this.r+5), this.pos.y + dir.y*(this.r+5),
+        dir.x*160, dir.y*160, 7, this.dmg, false, '#a070ff'
+      );
+      proj.sourceEnemy = this; projectiles.push(proj);
+    }
+    this.summonTimer -= dt;
+    if (this._reviveGlow > 0) this._reviveGlow -= dt * 2;
+    if (this.summonTimer <= 0) {
+      this.summonTimer = this.summonCd;
+      this._reviveGlow = 1.0;
+      return 'necro_revive';
+    }
+  }
+  draw(ctx) {
+    this.drawBase(ctx);
+    ctx.save(); ctx.font = `${this.r}px serif`; ctx.textAlign = 'center';
+    ctx.fillText('💀', this.pos.x, this.pos.y + this.r*0.4); ctx.restore();
+    const charge = 1 - Math.min(this.summonTimer, this.summonCd) / this.summonCd;
+    ctx.save();
+    ctx.globalAlpha = 0.3 + charge * 0.5; ctx.strokeStyle = '#a070ff';
+    ctx.lineWidth = 2; ctx.shadowColor = '#a070ff'; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.r + 8, -Math.PI/2, -Math.PI/2 + charge * TAU); ctx.stroke();
+    if (this._reviveGlow > 0) {
+      ctx.globalAlpha = this._reviveGlow * 0.6;
+      ctx.fillStyle = '#a070ff';
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, (this.r+40) * this._reviveGlow, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 //  MINI BOSS — fast aggressive skirmisher (odd boss floors)
 // ═══════════════════════════════════════════════════════════
 class MiniBoss extends Enemy {

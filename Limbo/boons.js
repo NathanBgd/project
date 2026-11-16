@@ -225,6 +225,18 @@ const ALL_BOONS = [
   { id:'lame_sismique', name:'Lame Sismique', icon:'🌍', color:'#a06020', rarity:'rare', tags:['melee'],
     desc:'Chaque 3e coup de mêlée provoque une onde de choc (80px, 60% dmg).',
     apply(p){ p.stats.seismicStrike = true; p.stats.seismicCounter = 0; } },
+
+  { id:'regain_vital', name:'Regain Vital', icon:'💚', color:'#50d050', rarity:'rare', tags:['defense'],
+    desc:'Régénère 1.5 PV/s en permanence.',
+    apply(p){ p.stats.regenRate = (p.stats.regenRate||0) + 1.5; } },
+
+  { id:'impact_critique', name:'Impact Critique', icon:'🎯', color:'#ffcc00', rarity:'rare', tags:['utility'],
+    desc:'+15% chance de coup critique (tirs et mêlée).',
+    apply(p){ p.stats.critChance = (p.stats.critChance||0.10) + 0.15; } },
+
+  { id:'derniere_lame', name:'Dernière Lame', icon:'🩸', color:'#cc2020', rarity:'epic', tags:['melee'],
+    desc:'Sous 30% PV, tous vos dégâts sont multipliés par 1.5.',
+    apply(p){ p.stats.lastBlade = true; } },
 ];
 
 // ═══════════════════════════════════════════════════════════

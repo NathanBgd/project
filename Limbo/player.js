@@ -74,17 +74,29 @@ class Player {
       frenzyStacks: 0,
       frenzyBonus:  0.03,
       frenzyMax:    0.30,
+      regenRate:    0,
+      critChance:   0.10,
+      lastBlade:    false,
     };
   }
 
   get baseSpeed()    { return 210 * this.stats.speedMult; }
-  get meleeDmg()     { return Math.round(25 * this.stats.dmgMult); }
+  get meleeDmg() {
+    const base = Math.round(25 * this.stats.dmgMult);
+    return (this.stats.lastBlade && this.hp < this.maxHp * 0.30) ? Math.round(base * 1.5) : base;
+  }
   get meleeRange()   { return 110 * this.stats.meleeRange; }
   get meleeAngle()   { return Math.PI / 2.5; }
   get atkCooldown()  { return 0.42 / this.stats.atkSpeed; }
   get castCooldown() { return (0.60 / this.stats.atkSpeed + (this.stats.castCooldown||0)) * (this.stats.castCooldownMult||1); }
-  get castDmg()      { return Math.round(30 * this.stats.dmgMult * (this.stats.castDmgMult||1)); }
-  get blastDmg()     { return Math.round(38 * this.stats.dmgMult * (this.stats.blastMult||1)); }
+  get castDmg() {
+    const base = Math.round(30 * this.stats.dmgMult * (this.stats.castDmgMult||1));
+    return (this.stats.lastBlade && this.hp < this.maxHp * 0.30) ? Math.round(base * 1.5) : base;
+  }
+  get blastDmg() {
+    const base = Math.round(38 * this.stats.dmgMult * (this.stats.blastMult||1));
+    return (this.stats.lastBlade && this.hp < this.maxHp * 0.30) ? Math.round(base * 1.5) : base;
+  }
   get blastCooldown(){ return Math.max(2.0, 4.5 - (this.stats.blastCDReduc||0)); }
   get blastRadius()  { return 160; }
 
@@ -132,6 +144,11 @@ class Player {
     this.blastTimer = Math.max(0, this.blastTimer - dt);
     this.atkAnim    = Math.max(0, this.atkAnim    - dt);
     this.knockTimer = Math.max(0, this.knockTimer - dt);
+
+    // Passive regen
+    if (this.stats.regenRate > 0 && !this.isSpectator) {
+      this.hp = Math.min(this.maxHp, this.hp + this.stats.regenRate * dt);
+    }
 
     // ── BURST QUEUE (rafale boon) ──────────────────────────
     if (this._burstQueue > 0 && this._burstDir) {

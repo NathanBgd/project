@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v1.8.0';
+const VERSION = 'v1.9.0';
 
 const STATE = {
   MENU:'menu', GRIMOIRE:'grimoire', GUIDE:'guide', UPGRADES:'upgrades',
@@ -87,6 +87,9 @@ class Game {
     this._killStreakTimer = 0;
     this._spectatorMode   = false;  // local player is spectating
     this._hostIsSpectator = false;  // remote host became spectator (client-side flag)
+    this._reviveTimer     = 0;   // how long alive player has been near dead partner
+    this._depthMilestone  = '';  // text to flash on zone change
+    this._depthMilestoneT = 0;   // timer for the flash (counts down from 2.5)
     this._myFateVote    = -1;     // local player's card vote index
     this._p2FateVote    = -1;     // other player's card vote index
     this._fateVoteTimer = -1;     // 10s countdown (-1 = not running)
@@ -204,6 +207,12 @@ class Game {
     this._roomStartTime = this.runTime;
     const coopMult = this.coopMode ? 2.5 : 1.0;
     this.room = new Room(this.depth, isBoss, this.perfMult * coopMult);
+    // Depth milestone announcements
+    const milestones = { 1:'🌑 Limbes', 6:'💧 Achéron', 11:'🌿 Érèbe', 16:'🔥 Tourment', 26:'☄ Supplice', 36:'☠ Chaos' };
+    if (milestones[this.depth]) {
+      this._depthMilestone = milestones[this.depth];
+      this._depthMilestoneT = 2.5;
+    }
     this.player.pos.set(W/2, PLAY.y + PLAY.h - 65);
     Logger.log('ROOM', `Entered room depth=${this.depth} isBoss=${isBoss}`);
     if (isBoss) {
@@ -404,6 +413,7 @@ class Game {
       Particles.update(dt);
       return;
     }
+    if (this._depthMilestoneT > 0) this._depthMilestoneT -= dt;
     this.runTime+=dt;
     const prevHp=this.player.hp;
     const prevAlive = this.room.enemies.filter(e => !e.dead).length;
@@ -490,6 +500,64 @@ class Game {
     }
 
     Particles.update(dt);
+
+    // ── COOP REVIVE: alive player stays near dead partner's ghost for 3s ──
+    if (this.coopMode) {
+      const REVIVE_DIST = 65, REVIVE_TIME = 3.0;
+      let nearGhost = false;
+
+      if (Net.isHost) {
+        // Case A: host alive, P2 is spectator ghost
+        if (!this._spectatorMode && this.player2 && this.player2.isSpectator) {
+          const d = Math.hypot(this.player.pos.x - this.player2.pos.x, this.player.pos.y - this.player2.pos.y);
+          if (d < REVIVE_DIST) {
+            nearGhost = true;
+            this._reviveTimer += dt;
+            if (this._reviveTimer >= REVIVE_TIME) {
+              this._reviveTimer = 0;
+              this.player2.isSpectator = false;
+              this.player2.dead = false;
+              this.player2.hp = Math.round(this.player2.maxHp * 0.30);
+              Particles.burst(this.player2.pos.x, this.player2.pos.y, 20, '#5f5', 160, 4);
+              Net.send({ type: 'partner_revived', hp: this.player2.hp });
+              Logger.log('SYSTEM', 'P1 revived P2');
+            }
+          }
+        }
+        // Case B: host is spectator, P2 (via input) is near host ghost
+        if (this._spectatorMode && this._p2Input) {
+          const d = Math.hypot(this._p2Input.x - this.player.pos.x, this._p2Input.y - this.player.pos.y);
+          if (d < REVIVE_DIST) {
+            nearGhost = true;
+            this._reviveTimer += dt;
+            if (this._reviveTimer >= REVIVE_TIME) {
+              this._reviveTimer = 0;
+              this.player.isSpectator = false;
+              this.player.dead = false;
+              this._spectatorMode = false;
+              this.player.hp = Math.round(this.player.maxHp * 0.30);
+              Particles.burst(this.player.pos.x, this.player.pos.y, 20, '#5f5', 160, 4);
+              Net.send({ type: 'host_revived', hp: this.player.hp });
+              Logger.log('SYSTEM', 'P2 revived P1');
+            }
+          }
+        }
+      } else {
+        // Client: alive, host is spectator (use _remoteP1 for host ghost position)
+        if (!this._spectatorMode && this._hostIsSpectator && this._remoteP1) {
+          const d = Math.hypot(this.player.pos.x - this._remoteP1.x, this.player.pos.y - this._remoteP1.y);
+          if (d < REVIVE_DIST) {
+            nearGhost = true;
+            this._reviveTimer += dt;
+            if (this._reviveTimer >= REVIVE_TIME) {
+              this._reviveTimer = 0;
+              Net.send({ type: 'request_revive' });
+            }
+          }
+        }
+      }
+      if (!nearGhost) this._reviveTimer = 0;
+    }
 
     // Screen shake on damage — subtle, not disorienting
     if (this.player.hp < prevHp) {
@@ -765,6 +833,18 @@ class Game {
     ctx.restore();
     if (this.fade>0) { ctx.fillStyle=`rgba(0,0,0,${this.fade})`; ctx.fillRect(0,0,W,H); }
     Logger.drawOverlay(this.ctx);
+    // Depth milestone flash
+    if (this._depthMilestoneT > 0 && (this.state === STATE.PLAYING || this.state === STATE.FATE_CHOICE)) {
+      const alpha = Math.min(1, this._depthMilestoneT) * Math.min(1, (2.5 - this._depthMilestoneT) * 4);
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.85;
+      ctx.fillStyle = '#000'; ctx.fillRect(0, H/2 - 40, W, 80);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#fff'; ctx.shadowColor = '#8af'; ctx.shadowBlur = 20;
+      ctx.font = 'bold 28px Georgia'; ctx.textAlign = 'center';
+      ctx.fillText(this._depthMilestone, W/2, H/2 + 10);
+      ctx.restore();
+    }
     // Version badge — toujours visible en haut à gauche
     this.ctx.save();
     this.ctx.textAlign = 'left';
@@ -812,6 +892,19 @@ class Game {
       ctx.restore();
     }
     this.player.drawHUD(ctx);
+    // ── Revive progress bar ──────────────────────────────────
+    if (this.coopMode && this._reviveTimer > 0) {
+      const pct = this._reviveTimer / 3.0;
+      const bw = 160, bh = 12;
+      const bx = W/2 - bw/2, by = H/2 + 55;
+      ctx.save();
+      ctx.fillStyle = '#111'; _roundRect(ctx, bx-2, by-2, bw+4, bh+4, 4); ctx.fill();
+      ctx.fillStyle = `hsl(${120*pct}, 90%, 55%)`;
+      _roundRect(ctx, bx, by, bw * pct, bh, 3); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Georgia'; ctx.textAlign = 'center';
+      ctx.fillText('⟳ Ressusciter…', W/2, by - 6);
+      ctx.restore();
+    }
     // Spectator banner
     if (this._spectatorMode) {
       ctx.save();
@@ -1778,6 +1871,31 @@ class Game {
       Logger.log('SYSTEM', 'P1 est spectateur — P2 joue seul');
       return;
     }
+    if (data.type === 'partner_revived' && !Net.isHost) {
+      this.player.isSpectator = false;
+      this.player.dead = false;
+      this._spectatorMode = false;
+      this.player.hp = data.hp || Math.round((this.player.maxHp || 100) * 0.30);
+      Particles.burst(this.player.pos.x, this.player.pos.y, 20, '#5f5', 160, 4);
+      Logger.log('SYSTEM', 'Client revived by partner');
+      return;
+    }
+    if (data.type === 'host_revived' && !Net.isHost) {
+      this._hostIsSpectator = false;
+      Logger.log('SYSTEM', 'Host was revived');
+      return;
+    }
+    if (data.type === 'request_revive' && Net.isHost) {
+      // P2 requests to revive P1 (host)
+      this.player.isSpectator = false;
+      this.player.dead = false;
+      this._spectatorMode = false;
+      this.player.hp = Math.round(this.player.maxHp * 0.30);
+      Particles.burst(this.player.pos.x, this.player.pos.y, 20, '#5f5', 160, 4);
+      Net.send({ type: 'host_revived', hp: this.player.hp });
+      Logger.log('SYSTEM', 'P1 revived by P2 request');
+      return;
+    }
     if (data.type === 'kill_enemy' && Net.isHost) {
       // Client a tué des ennemis localement — appliquer sur le host
       for (const idx of (data.indices || [])) {
@@ -1901,6 +2019,7 @@ class Game {
     this.depth = 1; this.roomsCleared = 0; this.runTime = 0; this.soulsEarned = 0;
     this.perfMult = 1.0; this.roomClearTimes = []; this._roomStartTime = 0;
     this._spectatorMode = false; this._hostIsSpectator = false;
+    this._reviveTimer = 0;
     Particles.clear();
     this._loadRoom();
     this.state = STATE.PLAYING;

@@ -116,6 +116,7 @@ class Room {
     this._boonTriggered = false;
     this.enemies  = [];
     this.projectiles = [];
+    this.pickups = [];
     this.obstacles = [];
 
     // ── Depth-tier room theming ──────────────────────────────
@@ -237,6 +238,8 @@ class Room {
       case 'reaper':  return new Reaper(p.x, p.y, depth);
       case 'venom':   return new VenomSpitter(p.x, p.y, depth);
       case 'golem':   return new Golem(p.x, p.y, depth);
+      case 'sentinel':    return new Sentinel(p.x, p.y, depth);
+      case 'necromancer': return new Necromancer(p.x, p.y, depth);
     }
   }
 
@@ -265,24 +268,24 @@ class Room {
     else if (depth <= 4)  { mainPool=['shade','lancer'];                             elitePool=['specter']; }
     else if (depth <= 6)  { mainPool=['shade','lancer','archer'];                    elitePool=['specter','bomb']; }
     else if (depth <= 9)  { mainPool=['lancer','archer','brute','reaper'];           elitePool=['specter','bomb','cultist']; }
-    else if (depth <= 12) { mainPool=['lancer','archer','brute','wraith','reaper'];  elitePool=['specter','bomb','cultist','venom']; }
-    else if (depth <= 14) { mainPool=['archer','brute','wraith','cultist','reaper']; elitePool=['specter','bomb','venom','golem']; }
+    else if (depth <= 12) { mainPool=['lancer','archer','brute','wraith','reaper'];  elitePool=['specter','bomb','cultist','venom','sentinel']; }
+    else if (depth <= 14) { mainPool=['archer','brute','wraith','cultist','reaper']; elitePool=['specter','bomb','venom','golem','sentinel','necromancer']; }
     else if (depth <= 19) {
       // depth 15+ : Shades out, Specters/advanced only
-      mainPool=['specter','wraith','reaper','venom'];
-      elitePool=['specter','bomb','golem','wraith','reaper'];
+      mainPool=['specter','wraith','reaper','venom','sentinel','necromancer'];
+      elitePool=['specter','bomb','golem','wraith','reaper','sentinel','necromancer'];
     } else if (depth <= 24) {
       // depth 20+ : only advanced enemies
-      mainPool=['reaper','venom','golem','specter','archer','bomb'];
-      elitePool=['golem','reaper','specter','venom'];
+      mainPool=['reaper','venom','golem','specter','archer','bomb','sentinel','necromancer'];
+      elitePool=['golem','reaper','specter','venom','sentinel','necromancer'];
     } else if (depth <= 34) {
       // depth 25+ : élites doublées dans le pool
-      mainPool=['reaper','venom','golem','specter','archer','bomb','reaper','venom','golem','specter'];
-      elitePool=['golem','reaper','specter','venom','golem','reaper','specter','venom'];
+      mainPool=['reaper','venom','golem','specter','archer','bomb','reaper','venom','golem','specter','sentinel','necromancer','sentinel','necromancer'];
+      elitePool=['golem','reaper','specter','venom','golem','reaper','specter','venom','sentinel','necromancer','sentinel','necromancer'];
     } else {
       // depth 35+ : golem et reaper encore plus fréquents
-      mainPool=['reaper','venom','golem','specter','archer','bomb','reaper','venom','golem','specter','golem','reaper','golem','reaper'];
-      elitePool=['golem','reaper','specter','venom','golem','reaper','golem','reaper'];
+      mainPool=['reaper','venom','golem','specter','archer','bomb','reaper','venom','golem','specter','golem','reaper','golem','reaper','necromancer'];
+      elitePool=['golem','reaper','specter','venom','golem','reaper','golem','reaper','sentinel','necromancer'];
     }
 
     // ── Nombre d'ennemis par salle (scaling infini) ──────
@@ -326,6 +329,23 @@ class Room {
       if (e.dead && !e._deathFX) {
         e._deathFX = true;
         Particles.death(e.pos.x, e.pos.y, e.color || '#f88', e.r || 18);
+        // 15% chance to drop a health orb (not boss)
+        if (!e.isBoss && Math.random() < 0.15) {
+          this.pickups.push({ x: e.pos.x, y: e.pos.y, r: 9, hp: 15, timer: 7, glow: 0 });
+        }
+      }
+      // Handle Necromancer revive (returns string not array)
+      if (result === 'necro_revive') {
+        const dead = this.enemies.filter(en => en.dead && en !== e && !en.isBoss);
+        if (dead.length > 0) {
+          const target = dead[Math.floor(Math.random() * dead.length)];
+          target.dead = false;
+          target._deathFX = false;
+          target.hp = Math.round(target.maxHp * 0.45);
+          Particles.burst(target.pos.x, target.pos.y, 18, '#a070ff', 130, 3);
+          Particles.ring(target.pos.x, target.pos.y, 10, 50, '#a070ff', 0.5);
+          Logger.log('SPAWN', `Necromancer revived ${target.constructor.name}`);
+        }
       }
       if (result && Array.isArray(result)) {
         const cx = PLAY.x + PLAY.w/2, cy = PLAY.y + PLAY.h/2;
@@ -356,7 +376,7 @@ class Room {
           if (e.dead) continue;
           if (!circleCircle(p.pos.x, p.pos.y, p.r, e.pos.x, e.pos.y, e.r)) continue;
 
-          const isCrit  = Math.random() < 0.1;
+          const isCrit  = Math.random() < (player.stats.critChance || 0.10);
           const finalDmg = isCrit ? Math.floor(p.dmg * 1.75) : p.dmg;
           const killed   = e.takeDamage(finalDmg, p.bleed);
           const ps       = player.stats;
@@ -437,6 +457,19 @@ class Room {
     // NE PAS filtrer this.enemies — on garde les morts pour conserver les indices stables (sync coop)
     this.projectiles = this.projectiles.filter(p => !p.dead);
 
+    // ── Pickup updates (health orbs) ─────────────────────────
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const pk = this.pickups[i];
+      pk.timer -= dt;
+      pk.glow = (pk.glow + dt * 4) % TAU;
+      if (pk.timer <= 0) { this.pickups.splice(i, 1); continue; }
+      if (circleCircle(pk.x, pk.y, pk.r, player.pos.x, player.pos.y, player.r)) {
+        player.heal(pk.hp);
+        Particles.burst(pk.x, pk.y, 10, '#5f5', 80, 2);
+        this.pickups.splice(i, 1);
+      }
+    }
+
     if (this.enemies.length > 0 && this.enemies.every(e => e.dead) && !this.cleared) {
       this.cleared = true;
       Logger.log('ROOM', `Room cleared at depth ${this.depth}`);
@@ -446,6 +479,20 @@ class Room {
   draw(ctx) {
     this._drawRoom(ctx);
     for (const p of this.projectiles) p.draw(ctx);
+    // Draw health orbs
+    for (const pk of this.pickups) {
+      const pulse = 0.65 + Math.sin(pk.glow) * 0.35;
+      const fade  = Math.min(1, pk.timer * 2);
+      ctx.save();
+      ctx.globalAlpha = fade * pulse;
+      ctx.shadowColor = '#5f5'; ctx.shadowBlur = 10;
+      ctx.fillStyle = '#3c3';
+      ctx.beginPath(); ctx.arc(pk.x, pk.y, pk.r, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.shadowBlur = 0;
+      ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('+', pk.x, pk.y + 4);
+      ctx.restore();
+    }
     for (const e of this.enemies) e.draw(ctx);
   }
 
