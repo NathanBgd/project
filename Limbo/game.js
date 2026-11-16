@@ -560,8 +560,11 @@ class Game {
 
     this._fateHover = -1;
 
+    // En coop, seul l'hôte choisit
+    const canChoose = !this.coopMode || Net.isHost;
+
     // Keyboard shortcuts 1/2/3
-    if (cardsReady) {
+    if (cardsReady && canChoose) {
       for (let k = 0; k < 3; k++) {
         if (Input.justPressed(`Digit${k+1}`) || Input.justPressed(`Numpad${k+1}`)) {
           if (this._fateOptions[k]) { this._selectFate(this._fateOptions[k]); return; }
@@ -572,8 +575,8 @@ class Game {
     for (let i = 0; i < this._fateOptions.length; i++) {
       const cx = startX + i * (cardW + gap);
       if (cardsReady && hitTest(mx, my, cx, cardY, cardW, cardH)) {
-        this._fateHover = i;
-        if (lp) {
+        if (canChoose) this._fateHover = i;
+        if (canChoose && lp) {
           Input._leftJustPressed = false;
           this._selectFate(this._fateOptions[i]);
           return;
@@ -596,6 +599,8 @@ class Game {
   _updateShop(dt) {
     const mx = Input.mouse.x, my = Input.mouse.y;
     const lp = Input._leftJustPressed;
+    // En coop, seul l'hôte peut acheter et quitter
+    const canAct = !this.coopMode || Net.isHost;
     const itemW = 210, itemH = 240, gap = 36;
     const totalW = this._shopItems.length * itemW + (this._shopItems.length - 1) * gap;
     const startX = W/2 - totalW/2;
@@ -605,7 +610,7 @@ class Game {
       if (this._shopBought.has(i)) continue;
       const ix = startX + i * (itemW + gap);
       const btnY = itemY + itemH - 56;
-      if (hitTest(mx, my, ix + 10, btnY, itemW - 20, 44) && lp) {
+      if (canAct && hitTest(mx, my, ix + 10, btnY, itemW - 20, 44) && lp) {
         const souls = Meta.getSouls();
         if (souls >= item.cost) {
           Meta.addSouls(-item.cost);
@@ -618,9 +623,9 @@ class Game {
         }
       }
     }
-    // Exit button
+    // Exit button (hôte uniquement en coop)
     const ex = W/2 - 80, ey = H - 110;
-    if (hitTest(mx, my, ex, ey, 160, 46) && lp) {
+    if (canAct && hitTest(mx, my, ex, ey, 160, 46) && lp) {
       Input._leftJustPressed = false;
       if (this.coopMode && Net.isHost) Net.send({ type:'shop_exit' });
       this._advanceToNextRoom();
@@ -1036,6 +1041,15 @@ class Game {
     if (this._killStreak >= 2 && slideDt > 0.5) {
       ctx.fillStyle = '#ff8'; ctx.font = 'bold 13px Georgia'; ctx.textAlign = 'center';
       ctx.fillText(`🔥 Série : ${this._killStreak} éliminations`, W/2, H - 72);
+    }
+
+    // Coop: client voit les cartes mais ne peut pas choisir
+    if (this.coopMode && !Net.isHost && slideDt > 0.9) {
+      const pulse = 0.6 + Math.sin(Date.now() * 0.003) * 0.4;
+      ctx.save(); ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#8af'; ctx.font = 'bold 13px Georgia'; ctx.textAlign = 'center';
+      ctx.fillText('⏳ En attente du choix de l\'hôte…', W/2, H - 48);
+      ctx.restore();
     }
   }
 
