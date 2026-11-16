@@ -1171,9 +1171,14 @@ class Game {
       }
     }
 
-    // Soul counter
-    ctx.fillStyle='#ff8'; ctx.font='bold 14px Georgia'; ctx.textAlign='center';
-    ctx.fillText(`💎 ${Meta.getSouls()} Âmes disponibles`, W/2, startY+4*(btnH+gap)+10);
+    // Soul counter — bas à droite
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    _roundRect(ctx, W-144, H-42, 132, 28, 6); ctx.fill();
+    ctx.fillStyle = '#ff8'; ctx.font = 'bold 13px Georgia';
+    ctx.fillText(`💎 ${Meta.getSouls()} âmes`, W-14, H-23);
+    ctx.restore();
 
     ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='13px Georgia';
     ctx.fillText('15 salles  ·  3 boss  ·  20 dons  ·  8 synergies  ·  7 améliorations permanentes', W/2, H-50);
