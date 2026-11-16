@@ -37,22 +37,6 @@ class Game {
     };
 
     this.state   = STATE.MENU;
-    // Auto-join si lien d'invitation (?join=CODE)
-    const _joinParam = new URLSearchParams(location.search).get('join');
-    if (_joinParam) {
-      history.replaceState(null, '', location.pathname);
-      this._lobbyInput = _joinParam;
-      this._lobbyError = 'Connexion en cours…';
-      this.state = STATE.LOBBY;
-      // Auto-trigger join immediately
-      Net.join(_joinParam).then(() => {
-        Net.onMessage(data => this._handleNetMessage(data));
-        this._lobbyJoining = false;
-        this._lobbyNamePhase = true;
-        this._myName = ''; this._p2Name = '';
-        this._myNameReady = false; this._p2NameReady = false;
-      }).catch(e => { this._lobbyError = 'Erreur : ' + e.message; });
-    }
     this.player  = null;
     this.room    = null;
     this.depth   = 0;
@@ -114,6 +98,27 @@ class Game {
     this._p2NameReady = false; // autre joueur a validé son pseudo
     this.p1Name = 'Joueur 1'; // noms conservés pour l'affichage en jeu
     this.p2Name = 'Joueur 2';
+
+    // ── Auto-join via lien d'invitation (?join=CODE) ──────────
+    // Doit être APRÈS l'initialisation des vars lobby pour ne pas les écraser
+    const _joinParam = new URLSearchParams(location.search).get('join');
+    if (_joinParam) {
+      history.replaceState(null, '', location.pathname);
+      this._lobbyInput  = _joinParam;
+      this._lobbyError  = 'Connexion en cours…';
+      this._lobbyJoining = true;   // ← affiche l'écran "connexion" dès le départ
+      this.state = STATE.LOBBY;
+      Net.join(_joinParam).then(() => {
+        Net.onMessage(data => this._handleNetMessage(data));
+        this._lobbyJoining  = false;
+        this._lobbyNamePhase = true;
+        this._myName = ''; this._p2Name = '';
+        this._myNameReady = false; this._p2NameReady = false;
+      }).catch(e => {
+        this._lobbyJoining = false;
+        this._lobbyError = '❌ ' + (e.message || 'Connexion échouée — réessaie');
+      });
+    }
 
     // Menu buttons
     this._menuButtons = [
