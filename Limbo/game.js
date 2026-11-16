@@ -717,9 +717,14 @@ class Game {
     const alive=this.room.enemies.filter(e=>!e.dead).length;
     ctx.fillStyle=alive>0?'#f44':'#4f4';
     ctx.fillText(alive>0?`${alive} ennemi${alive>1?'s':''} restant${alive>1?'s':''}`:'Dégagée — passez la porte', W-20, 84);
-    // Souls display
-    ctx.fillStyle='#ff8'; ctx.font='11px Georgia';
-    ctx.fillText(`💎 ${Meta.getSouls()} âmes`, W-20, 102);
+    // Souls display — bottom-right corner
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    _roundRect(ctx, W-130, H-38, 118, 26, 6); ctx.fill();
+    ctx.fillStyle = '#ff8'; ctx.font = 'bold 13px Georgia';
+    ctx.fillText(`💎 ${Meta.getSouls()} âmes`, W-14, H-20);
+    ctx.restore();
 
     // Phase infinie (au-delà de depth 15)
     if (this.depth > 15) {

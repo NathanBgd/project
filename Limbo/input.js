@@ -57,5 +57,7 @@ const Input = {
 
   endFrame() {
     this._justPressed.clear();
+    this._leftJustPressed  = false;
+    this._rightJustPressed = false;
   }
 };
