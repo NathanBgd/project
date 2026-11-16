@@ -32,6 +32,8 @@ class Player {
     this.knockVel  = new Vec2();
     this.deathTimer= 0;
 
+    this._dashTrail = [];
+
     this.boonIds    = [];
     this.synergyIds = [];
 
@@ -157,6 +159,9 @@ class Player {
 
     // ── DASH ──────────────────────────────────────────────
     if (this.dashTimer > 0) {
+      // Store position for ghost trail
+      this._dashTrail.unshift({ x: this.pos.x, y: this.pos.y });
+      if (this._dashTrail.length > 8) this._dashTrail.pop();
       this.dashTimer -= dt;
       this.pos.x += this.dashVel.x * dt;
       this.pos.y += this.dashVel.y * dt;
@@ -173,6 +178,10 @@ class Player {
       if (this.dashTimer <= 0) this.dashInvincible = false;
     } else {
       this.dashInvincible = false;
+      if (this._dashTrail.length > 0 && this.dashTimer <= 0) {
+        // Gradually fade trail
+        this._dashTrail.pop();
+      }
 
       // ── MOVEMENT ────────────────────────────────────────
       let mvx = Input.moveX(), mvy = Input.moveY();
@@ -194,6 +203,7 @@ class Player {
         const slot = this.dashCooldowns.findIndex((c, i) => c <= 0 && i < this.stats.dashCharges);
         if (slot >= 0) {
           this.dashTimer = 0.18;
+          this._dashTrail = [];
           const dx = mvx || Math.cos(this.angle);
           const dy = mvy || Math.sin(this.angle);
           const dl = Math.hypot(dx, dy) || 1;
@@ -253,6 +263,7 @@ class Player {
           continue;
         }
         const killed = e.takeDamage(dmg, this.stats.bleed);
+        if (typeof window._hitstop === 'function') window._hitstop(killed ? 0.07 : 0.04);
         if (this.stats.chill && Math.random() < 0.3) e.chill();
         // Lame Enflammée : brûlure sur coup de mêlée
         if (this.stats.meleeBurn) {
@@ -409,6 +420,23 @@ class Player {
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.blastAnim.r * 0.6, 0, TAU); ctx.stroke();
       ctx.shadowBlur  = 0;
       ctx.globalAlpha = 1;
+    }
+
+    // Ghost afterimage trail during dash
+    if (this._dashTrail && this._dashTrail.length > 0 && this.dashTimer > 0) {
+      for (let i = 0; i < this._dashTrail.length; i++) {
+        const alpha = (1 - i / this._dashTrail.length) * 0.55;
+        const r = this.r * Math.max(0.3, 1 - i * 0.1);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#8ff';
+        ctx.shadowColor = '#8ff';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(this._dashTrail[i].x, this._dashTrail[i].y, r, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
     }
 
     // Dash trail

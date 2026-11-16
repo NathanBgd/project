@@ -135,9 +135,26 @@ class Enemy {
     this.chillTimer= 0;
     this.angle     = 0;
     this.isBoss    = false;
+    this.armorSegs = 0;
+    this.maxArmorSegs = 0;
   }
 
   takeDamage(dmg, bleed = false) {
+    // Armor check — absorbs hit entirely
+    if (this.armorSegs > 0) {
+      this.armorSegs--;
+      this.hitTimer = 0.25;
+      Particles.ring(this.pos.x, this.pos.y, this.r, this.r + 50, '#8cf', 0.5);
+      Particles.burst(this.pos.x, this.pos.y, 8, '#8cf', 120, 3);
+      if (typeof window._hitstop === 'function') window._hitstop(0.1);
+      if (this.armorSegs === 0) {
+        // Armor fully broken
+        Particles.ring(this.pos.x, this.pos.y, this.r, this.r + 90, '#fff', 0.6);
+        Particles.burst(this.pos.x, this.pos.y, 15, '#fff', 200, 4);
+        Logger.log('DAMAGE', `${this.constructor.name} armor broken!`);
+      }
+      return false;
+    }
     if (bleed && this.bleedTimer < 1) this.bleedTimer = 3;
     this.hp = Math.max(0, this.hp - dmg);
     this.hitTimer = 0.12;
@@ -214,6 +231,24 @@ class Enemy {
       if (this.isBoss) {
         ctx.strokeStyle = '#ff8'; ctx.lineWidth = 1;
         ctx.strokeRect(bx, by, bw, bh);
+      }
+    }
+
+    // Armor pips (shown above HP bar)
+    if (this.maxArmorSegs > 0) {
+      const pipR = 5, pipGap = 5;
+      const totalPipW = this.maxArmorSegs * (pipR * 2 + pipGap) - pipGap;
+      const ay = this.pos.y - this.r - (this.isBoss ? 36 : 22);
+      for (let i = 0; i < this.maxArmorSegs; i++) {
+        const ax = this.pos.x - totalPipW / 2 + pipR + i * (pipR * 2 + pipGap);
+        const active = i < this.armorSegs;
+        ctx.fillStyle = active ? '#8cf' : '#1a3a4a';
+        ctx.shadowColor = active ? '#8cf' : 'transparent';
+        ctx.shadowBlur = active ? 8 : 0;
+        ctx.beginPath();
+        ctx.arc(ax, ay, pipR, 0, TAU);
+        ctx.fill();
+        ctx.shadowBlur = 0;
       }
     }
   }
@@ -419,6 +454,7 @@ class Brute extends Enemy {
     this.windupTimer  = 0;
     this.dmg = 32 + depth * 4;
     this.damageReduce = 5 + Math.floor(depth * 0.5);
+    this.armorSegs = 2; this.maxArmorSegs = 2;
   }
   takeDamage(dmg, bleed) { return super.takeDamage(Math.max(1, dmg - this.damageReduce), bleed); }
   update(dt, player, obstacles, projectiles) {
@@ -721,6 +757,7 @@ class Warden extends Enemy {
     this.dmg         = Math.round((28 + bossLevel * 6) * bScale);
     this.name        = ['', 'Megaera la Furieuse', "L'Hydre Osseuse", 'Hadès lui-même'][Math.min(bossLevel, 3)];
     Logger.log('BOSS', `${this.name} spawned at (${Math.round(x)},${Math.round(y)})`, { hp, bossLevel });
+    this.armorSegs = 3; this.maxArmorSegs = 3;
   }
 
   get phaseThreshold() {
@@ -1016,6 +1053,7 @@ class Golem extends Enemy {
     this.dmg         = Math.round((18 + depth * 2.5) * iScale);
     this.slamDmg     = Math.round((35 + depth * 4) * iScale);
     this.slamRadius  = 90;
+    this.armorSegs = 2; this.maxArmorSegs = 2;
   }
   update(dt, player, obstacles, projectiles) {
     this.contactTimer = Math.max(0, this.contactTimer - dt);
@@ -1083,6 +1121,7 @@ class MiniBoss extends Enemy {
     const names = ['', 'Furies Jumelle', 'Chasseresse Maudite', 'Spectre Royal', 'Lames du Chaos'];
     this.name = names[Math.min(bossLevel, names.length-1)];
     Logger.log('BOSS', `${this.name} (MiniBoss) spawned`, { hp, bossLevel });
+    this.armorSegs = 2; this.maxArmorSegs = 2;
   }
   get phaseThreshold() { return this.hp/this.maxHp > 0.5 ? 1 : 2; }
   update(dt, player, obstacles, projectiles) {

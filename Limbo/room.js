@@ -5,24 +5,29 @@ class Obstacle {
 }
 
 const OBSTACLE_LAYOUTS = [
+  // 0: empty room
   [],
+  // 1: corner pillars
   (cx, cy) => [
     new Obstacle(cx-280, cy-160, 50, 50), new Obstacle(cx+230, cy-160, 50, 50),
     new Obstacle(cx-280, cy+110, 50, 50), new Obstacle(cx+230, cy+110, 50, 50),
   ],
+  // 2: cardinal cross (open center)
   (cx, cy) => [
-    new Obstacle(cx-25, cy-120, 50, 50), new Obstacle(cx-25, cy+70, 50, 50),
-    new Obstacle(cx-120, cy-25, 50, 50), new Obstacle(cx+70, cy-25, 50, 50),
+    new Obstacle(cx-25, cy-130, 50, 50), new Obstacle(cx-25, cy+80,  50, 50),
+    new Obstacle(cx-130, cy-25, 50, 50), new Obstacle(cx+80,  cy-25, 50, 50),
   ],
+  // 3: side walls with gap
   (cx, cy) => [
     new Obstacle(cx-320, cy-180, 50, 160), new Obstacle(cx-320, cy+20, 50, 160),
     new Obstacle(cx+270, cy-180, 50, 160), new Obstacle(cx+270, cy+20, 50, 160),
   ],
+  // 4: scattered rocks
   (cx, cy) => {
-    const obs = [], positions = [[-220,-120],[180,-140],[-100,120],[240,100],[-280,60],[80,-60]];
-    for (const [dx,dy] of positions) obs.push(new Obstacle(cx+dx, cy+dy, 40, 40));
-    return obs;
+    const positions = [[-220,-120],[180,-140],[-100,120],[240,100],[-280,60],[80,-60]];
+    return positions.map(([dx,dy]) => new Obstacle(cx+dx, cy+dy, 40, 40));
   },
+  // 5: hexagon ring
   (cx, cy) => {
     const obs = [];
     for (let i=0; i<6; i++) {
@@ -31,22 +36,71 @@ const OBSTACLE_LAYOUTS = [
     }
     return obs;
   },
-  // New: diagonal corridor
+  // 6: diagonal corridor (top-left → bottom-right)
   (cx, cy) => [
-    new Obstacle(cx-200, cy-200, 55, 55), new Obstacle(cx-100, cy-100, 55, 55),
-    new Obstacle(cx,     cy,     55, 55), new Obstacle(cx+100, cy+100, 55, 55),
-    new Obstacle(cx+200, cy+200, 55, 55),
+    new Obstacle(cx-230, cy-180, 55, 55), new Obstacle(cx-115, cy-90, 55, 55),
+    new Obstacle(cx+115, cy+90,  55, 55), new Obstacle(cx+230, cy+180, 55, 55),
   ],
-  // New: plus/cross shape
+  // 7: plus / cross
   (cx, cy) => [
-    new Obstacle(cx-25, cy-100, 50, 60), new Obstacle(cx-25, cy+40, 50, 60),
-    new Obstacle(cx-130, cy-25, 60, 50), new Obstacle(cx+70, cy-25, 60, 50),
-    new Obstacle(cx-25, cy-25, 50, 50), // center
+    new Obstacle(cx-25, cy-110, 50, 60), new Obstacle(cx-25, cy+50,  50, 60),
+    new Obstacle(cx-140, cy-25, 60, 50), new Obstacle(cx+80,  cy-25, 60, 50),
+    new Obstacle(cx-25,  cy-25, 50, 50),
   ],
-  // New: scattered rocks
+  // 8: perimeter ring (compass)
   (cx, cy) => {
-    const positions = [[-260,0],[260,0],[0,-180],[0,180],[-160,-130],[160,130],[-160,130],[160,-130]];
+    const positions = [[-270,0],[270,0],[0,-185],[0,165],[-180,-125],[180,125],[-180,125],[180,-125]];
     return positions.map(([dx,dy]) => new Obstacle(cx+dx-18, cy+dy-18, 36, 36));
+  },
+  // 9: T-barrier top
+  (cx, cy) => [
+    new Obstacle(cx-180, cy-130, 180, 45), // top horizontal
+    new Obstacle(cx-25,  cy-130, 50,  120), // vertical stem
+    new Obstacle(cx-200, cy+80,  80,  45),
+    new Obstacle(cx+120, cy+80,  80,  45),
+  ],
+  // 10: L-corner barricades
+  (cx, cy) => [
+    new Obstacle(cx-300, cy-180, 120, 40), new Obstacle(cx-300, cy-180, 40, 120),
+    new Obstacle(cx+180, cy+100, 120, 40), new Obstacle(cx+260, cy-20,  40, 120),
+  ],
+  // 11: zigzag funnels
+  (cx, cy) => [
+    new Obstacle(cx-320, cy-100, 160, 40),
+    new Obstacle(cx+160, cy-10,  160, 40),
+    new Obstacle(cx-320, cy+80,  160, 40),
+  ],
+  // 12: arena pillars (inner ring tight)
+  (cx, cy) => {
+    const obs = [];
+    for (let i=0; i<4; i++) {
+      const a = (i/4)*TAU + Math.PI/4;
+      obs.push(new Obstacle(cx+Math.cos(a)*140-24, cy+Math.sin(a)*100-24, 48, 48));
+    }
+    obs.push(new Obstacle(cx-24, cy-24, 48, 48)); // center block
+    return obs;
+  },
+  // 13: dual long walls (vertical)
+  (cx, cy) => [
+    new Obstacle(cx-180, cy-180, 40, 240),
+    new Obstacle(cx+140, cy-60,  40, 240),
+  ],
+  // 14: chessboard 3×2
+  (cx, cy) => {
+    const obs = [];
+    const cols = [-200, -40, 120], rows = [-110, 60];
+    for (const dx of cols) for (const dy of rows) obs.push(new Obstacle(cx+dx, cy+dy, 44, 44));
+    return obs;
+  },
+  // 15: star burst (8 points)
+  (cx, cy) => {
+    const obs = [];
+    for (let i=0; i<8; i++) {
+      const a = (i/8)*TAU;
+      const r = i%2 === 0 ? 200 : 115;
+      obs.push(new Obstacle(cx+Math.cos(a)*r-18, cy+Math.sin(a)*r*0.75-18, 36, 36));
+    }
+    return obs;
   },
 ];
 
@@ -63,13 +117,65 @@ class Room {
     this.enemies  = [];
     this.projectiles = [];
     this.obstacles = [];
-    this.floorColor = isBoss ? '#1e1020' : '#1a1830';
+
+    // ── Depth-tier room theming ──────────────────────────────
+    if (isBoss) {
+      this.floorColor   = '#1e1020';
+      this.wallColor    = '#3a1828';
+      this.accentColor  = '#603040';
+      this.gridColor    = 'rgba(100,20,50,0.14)';
+      this.tierName     = 'Boss';
+    } else if (depth <= 5) {
+      // Tier 1: Limbes — cool purple-blue
+      this.floorColor   = '#12102a';
+      this.wallColor    = '#1e1c38';
+      this.accentColor  = '#282860';
+      this.gridColor    = 'rgba(60,60,120,0.12)';
+      this.tierName     = 'Limbes';
+    } else if (depth <= 10) {
+      // Tier 2: Achéron — dark teal-grey
+      this.floorColor   = '#0d1620';
+      this.wallColor    = '#182030';
+      this.accentColor  = '#203040';
+      this.gridColor    = 'rgba(30,80,100,0.14)';
+      this.tierName     = 'Achéron';
+    } else if (depth <= 15) {
+      // Tier 3: Érèbe — dark emerald
+      this.floorColor   = '#0a1510';
+      this.wallColor    = '#152018';
+      this.accentColor  = '#1e3028';
+      this.gridColor    = 'rgba(20,80,40,0.14)';
+      this.tierName     = 'Érèbe';
+    } else if (depth <= 24) {
+      // Tier 4: Tourment — crimson-dark
+      this.floorColor   = '#180a0a';
+      this.wallColor    = '#280f0f';
+      this.accentColor  = '#401010';
+      this.gridColor    = 'rgba(100,20,20,0.16)';
+      this.tierName     = 'Tourment';
+    } else if (depth <= 34) {
+      // Tier 5: Supplice — searing amber-black
+      this.floorColor   = '#1a1000';
+      this.wallColor    = '#281a00';
+      this.accentColor  = '#402800';
+      this.gridColor    = 'rgba(100,60,10,0.16)';
+      this.tierName     = 'Supplice';
+    } else {
+      // Tier 6: Chaos — void purple-black
+      this.floorColor   = '#0d0510';
+      this.wallColor    = '#180820';
+      this.accentColor  = '#2a0840';
+      this.gridColor    = 'rgba(80,10,120,0.18)';
+      this.tierName     = 'Chaos';
+    }
 
     const cx = PLAY.x + PLAY.w/2;
     const cy = PLAY.y + PLAY.h/2;
 
     if (!isBoss) {
-      const idx = RunRNG.randInt(1, OBSTACLE_LAYOUTS.length-1);
+      // Deeper rooms favour more complex (higher-index) layouts
+      const minIdx = depth <= 5 ? 1 : depth <= 10 ? 1 : depth <= 15 ? 3 : 4;
+      const idx = RunRNG.randInt(minIdx, OBSTACLE_LAYOUTS.length-1);
       const layout = OBSTACLE_LAYOUTS[idx];
       this.obstacles = typeof layout === 'function' ? layout(cx, cy) : [];
     }
@@ -348,8 +454,8 @@ class Room {
     ctx.fillStyle = this.floorColor;
     ctx.fillRect(x, y, w, h);
 
-    // Subtle floor grid
-    ctx.strokeStyle = this.isBoss ? 'rgba(100,30,60,0.15)' : 'rgba(80,80,120,0.12)';
+    // Subtle floor grid (uses tier color)
+    ctx.strokeStyle = this.gridColor;
     ctx.lineWidth = 1;
     const gs = 48;
     for (let gx = PLAY.x; gx <= PLAY.x+PLAY.w; gx += gs) {
@@ -363,10 +469,21 @@ class Room {
     const corners = [[PLAY.x, PLAY.y],[PLAY.x+PLAY.w, PLAY.y],[PLAY.x, PLAY.y+PLAY.h],[PLAY.x+PLAY.w, PLAY.y+PLAY.h]];
     corners.forEach(([cx2, cy2], i) => {
       const sx2 = i%2===0?1:-1, sy2 = i<2?1:-1;
-      ctx.strokeStyle = this.isBoss ? '#603040' : '#282850';
+      ctx.strokeStyle = this.accentColor;
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(cx2+sx2*2, cy2+sy2*20); ctx.lineTo(cx2+sx2*2, cy2+sy2*2); ctx.lineTo(cx2+sx2*20, cy2+sy2*2); ctx.stroke();
     });
+
+    // Depth tier label (subtle, top-left)
+    if (!this.isBoss) {
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px Georgia';
+      ctx.textAlign = 'left';
+      ctx.fillText(this.tierName.toUpperCase(), PLAY.x + 14, PLAY.y + 20);
+      ctx.restore();
+    }
 
     if (this.isBoss) {
       const pulse = 0.03 + 0.015 * Math.sin(Date.now() * 0.0008);
@@ -414,19 +531,19 @@ class Room {
     // Obstacles
     for (const o of this.obstacles) {
       // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.fillRect(o.x+4, o.y+4, o.w, o.h);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(o.x+5, o.y+7, o.w, o.h);
       // Face
-      ctx.fillStyle = this.isBoss ? '#3a1828' : '#1e1e3a';
-      _roundRect(ctx, o.x, o.y, o.w, o.h, 4); ctx.fill();
-      // Top highlight
-      const topGrad = ctx.createLinearGradient(o.x, o.y, o.x, o.y+o.h*0.4);
-      topGrad.addColorStop(0, this.isBoss ? 'rgba(200,80,120,0.3)' : 'rgba(100,100,200,0.3)');
+      ctx.fillStyle = this.wallColor;
+      _roundRect(ctx, o.x, o.y, o.w, o.h, 5); ctx.fill();
+      // Top highlight (tier tinted)
+      const topGrad = ctx.createLinearGradient(o.x, o.y, o.x, o.y+o.h*0.5);
+      topGrad.addColorStop(0, this.isBoss ? 'rgba(220,80,120,0.35)' : 'rgba(180,180,255,0.14)');
       topGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = topGrad; _roundRect(ctx, o.x, o.y, o.w, o.h*0.4, 4); ctx.fill();
+      ctx.fillStyle = topGrad; _roundRect(ctx, o.x, o.y, o.w, o.h*0.5, 5); ctx.fill();
       // Border
-      ctx.strokeStyle = this.isBoss ? '#602040' : '#303060'; ctx.lineWidth = 1.5;
-      _roundRect(ctx, o.x, o.y, o.w, o.h, 4); ctx.stroke();
+      ctx.strokeStyle = this.accentColor; ctx.lineWidth = 1.5;
+      _roundRect(ctx, o.x, o.y, o.w, o.h, 5); ctx.stroke();
     }
 
     this._drawWalls(ctx);
@@ -435,7 +552,7 @@ class Room {
   _drawWalls(ctx) {
     const { x, y, w, h } = PLAY;
     const wall = 12;
-    ctx.fillStyle = '#2a2440';
+    ctx.fillStyle = this.wallColor;
     ctx.fillRect(x-wall, y-wall, w+wall*2, wall);
     ctx.fillRect(x-wall, y+h, w+wall*2, wall);
     ctx.fillRect(x-wall, y, wall, h);

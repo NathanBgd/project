@@ -45,6 +45,33 @@ class TextParticle {
   }
 }
 
+class BigTextParticle {
+  constructor(x, y, text, color) {
+    this.x = x; this.y = y; this.text = text; this.color = color;
+    this.vy = -40; this.life = 1.4; this.maxLife = 1.4;
+    this.scale = 1.0;
+  }
+  update(dt) {
+    this.y += this.vy * dt;
+    this.vy *= (1 - 2 * dt);
+    this.scale = 1.0 + Math.sin(this.life * 4) * 0.08;
+    this.life -= dt;
+  }
+  draw(ctx) {
+    const a = Math.max(0, Math.min(1, this.life / this.maxLife));
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.font = `bold ${Math.round(28 * this.scale)}px Georgia`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = this.color;
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 4;
+    ctx.strokeText(this.text, this.x, this.y);
+    ctx.fillText(this.text, this.x, this.y);
+    ctx.restore();
+  }
+}
+
 class RingParticle {
   constructor(x, y, startR, endR, color, life) {
     this.x=x; this.y=y; this.r=startR; this.endR=endR;
@@ -85,6 +112,10 @@ const Particles = {
 
   heal(x, y, amount) {
     this.list.push(new TextParticle(x + rand(-10, 10), y - 10, `+${amount}`, '#5f5'));
+  },
+
+  bigText(x, y, text, color = '#ff8') {
+    this.list.push(new BigTextParticle(x, y, text, color));
   },
 
   ring(x, y, startR, endR, color, life=0.5) {

@@ -4,7 +4,7 @@ const STATE = {
   MENU:'menu', GRIMOIRE:'grimoire', GUIDE:'guide', UPGRADES:'upgrades',
   PLAYING:'playing', BOON_PICK:'boon_pick',
   TRANSITION:'transition', GAME_OVER:'game_over', WIN:'win',
-  LOBBY:'lobby'
+  LOBBY:'lobby', FATE_CHOICE:'fate_choice', SHOP:'shop'
 };
 
 class Game {
@@ -69,6 +69,19 @@ class Game {
     this._roomStartTime = 0;
 
     this.coopMode   = false;   // true quand 2 joueurs
+    this.hitstopTimer = 0;
+    this._dmgFlashTimer = 0;
+    this._bossIntroTimer = 0;
+    this._bossIntroName = '';
+    this._fateOptions = [];
+    this._fateHover = -1;
+    this._shopItems = [];
+    this._shopBought = new Set();
+    this._lastPlaystyleRatio = 0.5;
+    this._killStreak = 0;
+    this._killStreakTimer = 0;
+    this._fateAnimTimer  = 0;  // drives card slide-in animation
+    this._fateGuardTimer = 0;  // prevents missclicks after room clear
     this.player2    = null;    // instance Player pour P2 (hôte uniquement)
     this.p2State    = null;    // état reçu de l'hôte (client uniquement)
     this._netTimer  = 0;       // timer pour envoi état réseau
@@ -103,9 +116,14 @@ class Game {
 
   _loop(t) {
     try {
-      const dt=Math.min((t-this._lastTime)/1000, 0.05);
-      this._lastTime=t;
-      this.update(dt);
+      const rawDt = Math.min((t-this._lastTime)/1000, 0.05);
+      this._lastTime = t;
+      // Hitstop: skip game update for a few ms on hard hits
+      if (this.hitstopTimer > 0) {
+        this.hitstopTimer = Math.max(0, this.hitstopTimer - rawDt);
+      } else {
+        this.update(rawDt);
+      }
       this.draw();
       Input.endFrame();
     } catch(err) {
@@ -172,6 +190,120 @@ class Game {
       const bossNum = Math.ceil(this.depth / 5);
       const isMini = bossNum % 2 === 1;
       Logger.log('BOSS', `Floor ${this.depth}: ${isMini ? 'MiniBoss' : 'Warden'} (boss #${bossNum})`);
+      // Boss entrance animation
+      if (this.room.enemies.length > 0) {
+        this._bossIntroTimer = 2.5;
+        this._bossIntroName = this.room.enemies[0].name || 'BOSS';
+      }
+    } else {
+      this._bossIntroTimer = 0;
+    }
+  }
+
+  _advanceToNextRoom() {
+    this._doFade(1, () => {
+      this.depth++;
+      if (this.player.stats.roomHeal > 0) this.player.heal(this.player.stats.roomHeal);
+      if (this.depth % 15 === 1 && this.depth > 1) {
+        const bonus = 50 + Math.floor(this.depth / 15) * 25;
+        Meta.addSouls(bonus);
+        Logger.log('SYSTEM', `Milestone bonus: +${bonus} souls at depth ${this.depth}`);
+      }
+      this._loadRoom();
+      this.state = STATE.PLAYING;
+      this._doFade(-1, null);
+    });
+  }
+
+  _makeBoonPicker(choices, limitReroll) {
+    const playstyleRatio = this._lastPlaystyleRatio || 0.5;
+    const boonCount = this.player.stats.boonChoices || 3;
+    const onPickBoon = (boon) => {
+      boon.apply(this.player);
+      this.player.boonIds.push(boon.id);
+      checkSynergies(this.player);
+      Logger.log('BOON', `Picked: ${boon.name}`, {
+        dmgMult: this.player.stats.dmgMult.toFixed(2),
+        synergies: this.player.synergyIds
+      });
+      this._advanceToNextRoom();
+    };
+    return new BoonPicker(choices, onPickBoon, this.player.boonIds.slice(), {
+      canReroll: !!this.player.stats.canReroll && !limitReroll,
+      rerollCost: 8,
+      onReroll: () => {
+        const newChoices = pickBoons(this.player.boonIds, boonCount, playstyleRatio);
+        Logger.log('BOON', 'Rerolled boon choices');
+        this.boonPicker = this._makeBoonPicker(newChoices, true);
+      }
+    });
+  }
+
+  _generateFateOptions() {
+    const choices = this.player.stats.boonChoices || 3;
+    const healAmt = Math.round(this.player.maxHp * 0.4);
+    return [
+      { type:'boon', icon:'✨', label:'Don du Destin',   desc:`Choisissez parmi ${choices} dons de pouvoir`, color:'#302060' },
+      { type:'heal', icon:'💉', label:'Source de Vie',   desc:`Restaure ${healAmt} PV — soignez vos blessures`, color:'#102020' },
+      { type:'shop', icon:'🏛', label:'Puits de Charon', desc:'Dépensez des âmes contre des pouvoirs rares', color:'#2a1a08' },
+    ];
+  }
+
+  _selectFate(option) {
+    if (option.type === 'boon') {
+      const boonCount = this.player.stats.boonChoices || 3;
+      const choices = pickBoons(this.player.boonIds, boonCount, this._lastPlaystyleRatio);
+      Logger.log('BOON', `Fate: Boon choices (${boonCount}): ${choices.map(b=>b.name).join(', ')}`);
+      this.boonPicker = this._makeBoonPicker(choices, false);
+      this.state = STATE.BOON_PICK;
+      if (this.coopMode && Net.isHost) {
+        Net.send({ type:'state', gameState:'boon_pick',
+          boonChoices: choices.map(b=>b.id) });
+      }
+    } else if (option.type === 'heal') {
+      const healAmt = Math.round(this.player.maxHp * 0.4);
+      this.player.heal(healAmt);
+      this._shake(3, 0.2);
+      Particles.burst(W/2, H/2, 20, '#5f5', 150, 3);
+      Logger.log('SYSTEM', `Fate: Heal ${healAmt} HP`);
+      if (this.coopMode && Net.isHost) Net.send({ type:'fate_heal', amt: healAmt });
+      this._advanceToNextRoom();
+    } else if (option.type === 'shop') {
+      this._generateShopItems();
+      this.state = STATE.SHOP;
+      Logger.log('SYSTEM', "Fate: Entered Charon's Well");
+      if (this.coopMode && Net.isHost) Net.send({ type:'state', gameState:'shop' });
+    }
+  }
+
+  _generateShopItems() {
+    const healAmt = Math.round(this.player.maxHp * 0.35);
+    const allItems = [
+      { id:'hp_flask',    icon:'🧪', label:'Népenthès',        desc:`Restaure ${healAmt} PV`,         cost:15, apply:(p)=>p.heal(healAmt) },
+      { id:'large_flask', icon:'🫙', label:'Grande Fiole',     desc:'Restaure 100 PV',                cost:28, apply:(p)=>p.heal(100) },
+      { id:'chaos_boon',  icon:'🔮', label:'Cristal du Chaos', desc:'Don aléatoire immédiat',          cost:35, apply:(p,g)=>g._giveRandomBoon(p) },
+      { id:'shadow_veil', icon:'💨', label:'Voile des Ombres', desc:'+1 charge de Dash',              cost:30, apply:(p)=>{if(p.stats.dashCharges<4){p.stats.dashCharges++;p.dashCooldowns.push(0);}} },
+      { id:'soul_prism',  icon:'💎', label:'Prisme d\'Âmes',   desc:'+20% de dégâts ce run',          cost:22, apply:(p)=>{p.stats.dmgMult *= 1.20;} },
+      { id:'iron_heart',  icon:'❤', label:'Cœur de Fer',      desc:'+30 PV max + soin immédiat',     cost:32, apply:(p)=>{p.maxHp+=30;p.heal(30);} },
+      { id:'specter_dust',icon:'💫', label:'Poussière Spectre',desc:'+15% vitesse de déplacement',    cost:20, apply:(p)=>{p.stats.speedMult *= 1.15;} },
+      { id:'void_lens',   icon:'🔭', label:'Prisme du Vide',   desc:'-1s délai Blast ce run',         cost:18, apply:(p)=>{p.stats.blastCDReduc=(p.stats.blastCDReduc||0)+1;} },
+    ];
+    // Shuffle and pick 3
+    const shuffled = [...allItems].sort(() => Math.random() - 0.5);
+    this._shopItems = shuffled.slice(0, 3);
+    this._shopBought = new Set();
+  }
+
+  _giveRandomBoon(player) {
+    const totalKills = player.meleeKills + player.rangedKills;
+    const ratio = totalKills > 0 ? player.rangedKills / totalKills : 0.5;
+    const boon = pickBoons(player.boonIds, 1, ratio)[0];
+    if (boon) {
+      boon.apply(player);
+      player.boonIds.push(boon.id);
+      checkSynergies(player);
+      Particles.burst(W/2, H/2, 30, '#c5f', 200, 4);
+      Logger.log('BOON', `Shop: Random boon ${boon.name}`);
     }
   }
 
@@ -198,6 +330,9 @@ class Game {
   update(dt) {
     this.shakeT=Math.max(0,this.shakeT-dt);
     if (this.shakeT<=0) { this.shakeX=0; this.shakeY=0; }
+    this._dmgFlashTimer = Math.max(0, this._dmgFlashTimer - dt);
+    this._killStreakTimer = Math.max(0, this._killStreakTimer - dt);
+    if (this._killStreakTimer <= 0) this._killStreak = 0;
 
     if (this.fadeDir!==0) {
       this.fade += this.fadeDir*dt*4;
@@ -223,6 +358,8 @@ class Game {
     }
     else if (this.state===STATE.PLAYING)   this._updatePlaying(dt);
     else if (this.state===STATE.BOON_PICK) this._updateBoonPick(dt);
+    else if (this.state===STATE.FATE_CHOICE) this._updateFateChoice(dt);
+    else if (this.state===STATE.SHOP)        this._updateShop(dt);
     else if (this.state===STATE.GAME_OVER || this.state===STATE.WIN) {
       this.runTime+=dt;
       if (Input.justPressed('KeyR'))
@@ -241,8 +378,15 @@ class Game {
   }
 
   _updatePlaying(dt) {
+    // Block input during boss entrance animation
+    if (this._bossIntroTimer > 0) {
+      this._bossIntroTimer -= dt;
+      Particles.update(dt);
+      return;
+    }
     this.runTime+=dt;
     const prevHp=this.player.hp;
+    const prevAlive = this.room.enemies.filter(e => !e.dead).length;
     this.room.update(dt, this.player);
     this.player.update(dt, this.room, Input.mouse.x, Input.mouse.y);
 
@@ -314,6 +458,19 @@ class Game {
     if (this.player.hp < prevHp) {
       const dmgTaken = prevHp - this.player.hp;
       this._shake(Math.min(6, 2 + dmgTaken * 0.08), 0.12);
+      this._dmgFlashTimer = 0.14;
+    }
+    // Kill streak tracking
+    const newAlive = this.room.enemies.filter(e => !e.dead).length;
+    const justKilled = prevAlive - newAlive;
+    if (justKilled > 0) {
+      this._killStreak += justKilled;
+      this._killStreakTimer = 2.5;
+      if (this._killStreak >= 3) {
+        const msg = this._killStreak >= 6 ? '☠ MASSACRE !' : '🔥 SÉRIE !';
+        Particles.bigText(W/2, PLAY.y + 100, msg, this._killStreak >= 6 ? '#f04' : '#ff8');
+        if (this._killStreak >= 5) this._shake(4, 0.2);
+      }
     }
 
     // Dernière Chance: survive a fatal hit once per run
@@ -343,11 +500,10 @@ class Game {
     }
 
     if (this.room.cleared && !this.room._boonTriggered && this.state===STATE.PLAYING) {
-      this.room._boonTriggered=true;
+      this.room._boonTriggered = true;
       this.roomsCleared++;
 
-      // ── Performance tracking → adaptive difficulty (infinit only) ────
-      // Only kicks in after depth 15 (after first full cycle = "vaincre Hadès")
+      // Performance tracking → adaptive difficulty (infinite only)
       if (!this.room.isBoss && this.depth > 15) {
         const clearTime = this.runTime - this._roomStartTime;
         this.roomClearTimes.push(clearTime);
@@ -359,47 +515,25 @@ class Game {
       }
 
       if (this.room.isBoss) {
-        const healed=this.player.maxHp-this.player.hp;
-        if (healed>0) { this.player.hp=this.player.maxHp; Particles.heal(W/2,H/2,healed); }
+        const healed = this.player.maxHp - this.player.hp;
+        if (healed > 0) { this.player.hp = this.player.maxHp; Particles.heal(W/2, H/2, healed); }
       }
+
+      // Track playstyle ratio for boon selection
       const totalKills = this.player.meleeKills + this.player.rangedKills;
-      const playstyleRatio = totalKills > 0 ? this.player.rangedKills / totalKills : 0.5;
-      const boonCount = this.player.stats.boonChoices || 3;
-      const choices=pickBoons(this.player.boonIds, boonCount, playstyleRatio);
-      Logger.log('BOON',`Boon choices (${boonCount}): ${choices.map(b=>b.name).join(', ')}`);
-      const _makePicker = (pickerChoices, limitReroll) => {
-        const onPickBoon = (boon) => {
-          boon.apply(this.player);
-          this.player.boonIds.push(boon.id);
-          checkSynergies(this.player);
-          Logger.log('BOON',`Picked: ${boon.name}`, {
-            dmgMult:this.player.stats.dmgMult.toFixed(2),
-            synergies:this.player.synergyIds
-          });
-          this._doFade(1,()=>{
-            this.depth++;
-            if (this.player.stats.roomHeal>0) this.player.heal(this.player.stats.roomHeal);
-            // Every 15 floors: award milestone souls bonus
-            if (this.depth % 15 === 1 && this.depth > 1) {
-              const bonus = 50 + Math.floor(this.depth / 15) * 25;
-              Meta.addSouls(bonus);
-              Logger.log('SYSTEM', `Milestone bonus: +${bonus} souls at depth ${this.depth}`);
-            }
-            this._loadRoom(); this.state=STATE.PLAYING; this._doFade(-1,null);
-          });
-        };
-        return new BoonPicker(pickerChoices, onPickBoon, this.player.boonIds.slice(), {
-          canReroll: !!this.player.stats.canReroll && !limitReroll,
-          rerollCost: 8,
-          onReroll: () => {
-            const newChoices = pickBoons(this.player.boonIds, boonCount, playstyleRatio);
-            Logger.log('BOON', `Rerolled boon choices (cost: 8 souls)`);
-            this.boonPicker = _makePicker(newChoices, true); // limit to 1 reroll
-          }
-        });
-      };
-      this.boonPicker = _makePicker(choices, false);
-      this.state=STATE.BOON_PICK;
+      this._lastPlaystyleRatio = totalKills > 0 ? this.player.rangedKills / totalKills : 0.5;
+
+      // HADES-style fate choice — both solo and coop
+      this._fateOptions = this._generateFateOptions();
+      this._fateHover   = -1;
+      this._fateAnimTimer  = 0;
+      this._fateGuardTimer = 0.55; // 550ms guard against missclicks
+      Input._leftJustPressed = false; // discard the kill-click
+      this.state = STATE.FATE_CHOICE;
+      if (this.coopMode && Net.isHost) {
+        Net.send({ type:'state', gameState:'fate_choice',
+          fateOptions: this._fateOptions.map(o => o.type) });
+      }
     }
   }
 
@@ -407,6 +541,90 @@ class Game {
     this.boonPicker.update(dt);
     this.boonPicker.handleMouse(Input.mouse.x, Input.mouse.y, Input._leftJustPressed);
     if (Input._leftJustPressed) Input._leftJustPressed=false;
+  }
+
+  _updateFateChoice(dt) {
+    // Count down timers
+    if (this._fateGuardTimer > 0) { this._fateGuardTimer -= dt; return; }
+    this._fateAnimTimer += dt;
+
+    const mx = Input.mouse.x, my = Input.mouse.y;
+    const lp = Input._leftJustPressed;
+    // Cards only interactive after full slide-in (0.9s)
+    const cardsReady = this._fateAnimTimer > 0.9;
+
+    const cardW = 220, cardH = 230, gap = 40;
+    const totalW = 3 * cardW + 2 * gap;
+    const startX = W/2 - totalW/2;
+    const cardY = H/2 - cardH/2 + 30;
+
+    this._fateHover = -1;
+
+    // Keyboard shortcuts 1/2/3
+    if (cardsReady) {
+      for (let k = 0; k < 3; k++) {
+        if (Input.justPressed(`Digit${k+1}`) || Input.justPressed(`Numpad${k+1}`)) {
+          if (this._fateOptions[k]) { this._selectFate(this._fateOptions[k]); return; }
+        }
+      }
+    }
+
+    for (let i = 0; i < this._fateOptions.length; i++) {
+      const cx = startX + i * (cardW + gap);
+      if (cardsReady && hitTest(mx, my, cx, cardY, cardW, cardH)) {
+        this._fateHover = i;
+        if (lp) {
+          Input._leftJustPressed = false;
+          this._selectFate(this._fateOptions[i]);
+          return;
+        }
+      }
+    }
+    if (lp) Input._leftJustPressed = false;
+
+    // Host periodically syncs fate_choice state to client
+    if (this.coopMode && Net.isHost) {
+      this._netTimer = (this._netTimer||0) + dt;
+      if (this._netTimer > 0.5) {
+        this._netTimer = 0;
+        Net.send({ type:'state', gameState:'fate_choice',
+          fateOptions: this._fateOptions.map(o => o.type) });
+      }
+    }
+  }
+
+  _updateShop(dt) {
+    const mx = Input.mouse.x, my = Input.mouse.y;
+    const lp = Input._leftJustPressed;
+    const itemW = 210, itemH = 240, gap = 36;
+    const totalW = this._shopItems.length * itemW + (this._shopItems.length - 1) * gap;
+    const startX = W/2 - totalW/2;
+    const itemY = 210;
+    for (let i = 0; i < this._shopItems.length; i++) {
+      const item = this._shopItems[i];
+      if (this._shopBought.has(i)) continue;
+      const ix = startX + i * (itemW + gap);
+      const btnY = itemY + itemH - 56;
+      if (hitTest(mx, my, ix + 10, btnY, itemW - 20, 44) && lp) {
+        const souls = Meta.getSouls();
+        if (souls >= item.cost) {
+          Meta.addSouls(-item.cost);
+          item.apply(this.player, this);
+          this._shopBought.add(i);
+          this._shake(4, 0.18);
+          Particles.burst(W/2, H/2 + 50, 20, '#c0a040', 160, 3);
+          Input._leftJustPressed = false;
+          Logger.log('SYSTEM', `Bought ${item.label} for ${item.cost} souls`);
+        }
+      }
+    }
+    // Exit button
+    const ex = W/2 - 80, ey = H - 110;
+    if (hitTest(mx, my, ex, ey, 160, 46) && lp) {
+      Input._leftJustPressed = false;
+      if (this.coopMode && Net.isHost) Net.send({ type:'shop_exit' });
+      this._advanceToNextRoom();
+    }
   }
 
   // ── DRAW ─────────────────────────────────────────────────
@@ -421,6 +639,8 @@ class Game {
     else if (this.state===STATE.UPGRADES && this.upgradeScreen)  this.upgradeScreen.draw(ctx);
     else if (this.state===STATE.PLAYING||this.state===STATE.TRANSITION) this._drawPlaying(ctx);
     else if (this.state===STATE.BOON_PICK) { this._drawPlaying(ctx); this.boonPicker.draw(ctx); }
+    else if (this.state===STATE.FATE_CHOICE) { this._drawPlaying(ctx); this._drawFateChoice(ctx); }
+    else if (this.state===STATE.SHOP)        this._drawShop(ctx);
     else if (this.state===STATE.GAME_OVER) this._drawGameOver(ctx);
     else if (this.state===STATE.WIN)       this._drawWin(ctx);
 
@@ -471,6 +691,18 @@ class Game {
     this._drawBoonIcons(ctx);
     this._drawSynergyIcons(ctx);
     this._drawControls(ctx);
+    // Boss HP bar at top
+    this._drawBossHPBar(ctx);
+    // Boss entrance animation overlay
+    if (this._bossIntroTimer > 0) this._drawBossIntro(ctx);
+    // Damage flash
+    if (this._dmgFlashTimer > 0) {
+      ctx.save();
+      ctx.globalAlpha = this._dmgFlashTimer * 2.0 * 0.25;
+      ctx.fillStyle = '#f00';
+      ctx.fillRect(PLAY.x, PLAY.y, PLAY.w, PLAY.h);
+      ctx.restore();
+    }
   }
 
   _drawDepthHUD(ctx) {
@@ -573,6 +805,301 @@ class Game {
   _drawControls(ctx) {
     ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.font='11px Georgia'; ctx.textAlign='left';
     ctx.fillText('ZQSD/WASD: Déplacer  |  Clic gauche: Mêlée  |  Clic droit: Sort  |  Shift: Dash  |  E: Blast  |  F1: Journal  |  F2: Log', 20, H-15);
+  }
+
+  _drawBossHPBar(ctx) {
+    if (!this.room) return;
+    const boss = this.room.enemies.find(e => e.isBoss && !e.dead);
+    if (!boss) return;
+    const barW = 560, barH = 18, bx = W/2 - barW/2, by = 14;
+    // Panel background
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    _roundRect(ctx, bx - 10, by - 8, barW + 20, barH + 44, 6);
+    ctx.fill();
+    ctx.strokeStyle = '#503010'; ctx.lineWidth = 1;
+    _roundRect(ctx, bx - 10, by - 8, barW + 20, barH + 44, 6);
+    ctx.stroke();
+    // HP bar
+    ctx.fillStyle = '#1a0505'; ctx.fillRect(bx, by, barW, barH);
+    const ratio = Math.max(0, boss.hp / boss.maxHp);
+    const hpColor = ratio > 0.6 ? '#c06030' : ratio > 0.3 ? '#d04020' : '#f00';
+    ctx.fillStyle = hpColor; ctx.fillRect(bx, by, barW * ratio, barH);
+    // Phase dividers
+    for (let i = 1; i < 3; i++) {
+      const mx2 = bx + barW * (i / 3);
+      ctx.fillStyle = 'rgba(255,200,0,0.5)'; ctx.fillRect(mx2 - 1, by, 2, barH);
+    }
+    // Armor segments on bar
+    if (boss.maxArmorSegs > 0) {
+      for (let i = 0; i < boss.maxArmorSegs; i++) {
+        const ax2 = bx + barW * (i + 0.5) / boss.maxArmorSegs;
+        ctx.fillStyle = i < boss.armorSegs ? '#8cf' : 'rgba(100,180,210,0.2)';
+        ctx.beginPath(); ctx.arc(ax2, by + barH + 5, 5, 0, TAU); ctx.fill();
+      }
+    }
+    // Border
+    ctx.strokeStyle = '#a06020'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(bx, by, barW, barH);
+    // Boss name
+    ctx.fillStyle = '#ff8'; ctx.font = 'bold 13px Georgia'; ctx.textAlign = 'center';
+    ctx.shadowColor = '#806020'; ctx.shadowBlur = 8;
+    ctx.fillText(boss.name || 'BOSS', W/2, by + barH + (boss.maxArmorSegs > 0 ? 22 : 16));
+    ctx.shadowBlur = 0;
+    // Phase
+    const phase = boss.bossPhase || 1;
+    ctx.fillStyle = phase >= 3 ? '#f04' : phase >= 2 ? '#f80' : '#888';
+    ctx.font = '11px Georgia';
+    ctx.fillText(`Phase ${phase}`, W/2, by + barH + (boss.maxArmorSegs > 0 ? 36 : 30));
+  }
+
+  _drawBossIntro(ctx) {
+    const t = this._bossIntroTimer;
+    const totalDur = 2.5;
+    let alpha = t > totalDur - 0.5 ? (totalDur - t) * 2 : (t < 0.5 ? t * 2 : 1.0);
+    alpha = Math.max(0, Math.min(1, alpha));
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.75;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, H/2 - 90, W, 180);
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#a00'; ctx.font = 'bold 13px Georgia';
+    ctx.fillText('⚔  B O S S  ⚔', W/2, H/2 - 40);
+    ctx.fillStyle = '#ff8'; ctx.font = 'bold 46px Georgia';
+    ctx.shadowColor = '#f80'; ctx.shadowBlur = 35;
+    ctx.fillText(this._bossIntroName, W/2, H/2 + 12);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(200,180,120,0.65)'; ctx.font = 'italic 14px Georgia';
+    ctx.fillText('Préparez-vous au combat...', W/2, H/2 + 50);
+    ctx.restore();
+  }
+
+  _drawFateChoice(ctx) {
+    const t = this._fateAnimTimer;
+    const guardActive = this._fateGuardTimer > 0;
+
+    // ── Phase 1 : « SALLE DÉGAGÉE » flash (0 → 0.65s) ──────
+    const flashDur  = 0.65;
+    const flashAlpha = guardActive
+      ? Math.min(1, this._fateGuardTimer / 0.3)              // during guard: fade in
+      : (t < flashDur ? 1 - (t / flashDur) : 0);             // after guard: fade out
+
+    // Dark overlay (opacity ramps up with animation)
+    const overlayA = guardActive ? 0.5 : Math.min(0.82, 0.5 + t * 0.6);
+    ctx.fillStyle = `rgba(0,0,0,${overlayA})`; ctx.fillRect(0, 0, W, H);
+
+    if (flashAlpha > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = flashAlpha;
+      ctx.textAlign = 'center';
+      // Flash text
+      const flashScale = 1.0 + 0.12 * Math.sin(flashAlpha * Math.PI);
+      ctx.save();
+      ctx.translate(W/2, H/2 - 10);
+      ctx.scale(flashScale, flashScale);
+      ctx.fillStyle = '#ffe066';
+      ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 60;
+      ctx.font = 'bold 56px Georgia';
+      ctx.fillText('SALLE DÉGAGÉE', 0, 0);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+      ctx.fillStyle = `rgba(255,255,255,${flashAlpha * 0.55})`;
+      ctx.font = '16px Georgia';
+      ctx.fillText('— Préparez-vous pour le prochain choix —', W/2, H/2 + 42);
+      ctx.restore();
+    }
+
+    // ── Phase 2 : cartes (commencent à glisser après 0.1s de guard-clear) ──
+    const cardSlideStart = 0.1; // seconds after guard lifts before cards begin sliding
+    if (guardActive || t < cardSlideStart) return;
+
+    const slideDt = t - cardSlideStart;
+
+    // EaseOutBack pour le slide-in
+    const easeOutBack = (x) => {
+      const c1 = 1.70158, c3 = c1 + 1;
+      return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+    };
+
+    const cardW = 220, cardH = 230, gap = 40;
+    const totalW = 3 * cardW + 2 * gap;
+    const startX = W/2 - totalW/2;
+    const cardY   = H/2 - cardH/2 + 24;
+    const mx = Input.mouse.x, my = Input.mouse.y;
+
+    // Title fades in
+    const titleA = Math.min(1, (slideDt - 0.0) / 0.35);
+    if (titleA > 0) {
+      ctx.save(); ctx.globalAlpha = titleA;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ff8'; ctx.font = 'bold 28px Georgia';
+      ctx.shadowColor = '#c0a040'; ctx.shadowBlur = 20;
+      ctx.fillText('CHOISISSEZ VOTRE DESTIN', W/2, cardY - 56);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = 'italic 13px Georgia';
+      ctx.fillText('Soyez sage, mortel — chaque choix forge votre légende.', W/2, cardY - 28);
+      ctx.restore();
+    }
+
+    const cardColors = ['#1e1240', '#0d2020', '#1e1208'];
+    const bandColors  = ['#5533cc', '#119955', '#bb6600'];
+
+    for (let i = 0; i < this._fateOptions.length; i++) {
+      const opt = this._fateOptions[i];
+      const slideDelay = 0.08 + i * 0.12; // staggered slide
+      const rawP = Math.min(1, Math.max(0, (slideDt - slideDelay) / 0.44));
+      const p = easeOutBack(rawP);
+
+      const cx = startX + i * (cardW + gap);
+      const drawY = cardY + (1 - p) * 90; // slides up from below
+      const alpha = Math.min(1, rawP * 2.5);
+
+      ctx.save(); ctx.globalAlpha = alpha;
+
+      const hov = rawP >= 1 && hitTest(mx, my, cx, cardY, cardW, cardH);
+      const scale = hov ? 1.04 : 1.0;
+
+      ctx.save();
+      ctx.translate(cx + cardW/2, drawY + cardH/2);
+      ctx.scale(scale, scale);
+      const lx = -cardW/2, ly = -cardH/2;
+
+      // Card shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      _roundRect(ctx, lx + 5, ly + 8, cardW, cardH, 14); ctx.fill();
+
+      // Card body
+      if (hov) {
+        ctx.shadowColor = bandColors[i]; ctx.shadowBlur = 28;
+      }
+      ctx.fillStyle = hov ? cardColors[i].replace('#', '#2') : cardColors[i];
+      _roundRect(ctx, lx, ly, cardW, cardH, 14); ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Coloured top band
+      ctx.save();
+      ctx.beginPath();
+      _roundRect(ctx, lx, ly, cardW, 10, 14);
+      ctx.clip();
+      ctx.fillStyle = bandColors[i];
+      ctx.fillRect(lx, ly, cardW, 10);
+      ctx.restore();
+
+      // Border
+      ctx.strokeStyle = hov ? '#fff' : `rgba(255,255,255,${0.1 + i * 0.04})`;
+      ctx.lineWidth = hov ? 2.5 : 1.2;
+      _roundRect(ctx, lx, ly, cardW, cardH, 14); ctx.stroke();
+
+      // Icon
+      ctx.font = '52px serif'; ctx.textAlign = 'center';
+      ctx.fillText(opt.icon, 0, ly + 76);
+
+      // Label
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 17px Georgia';
+      ctx.fillText(opt.label, 0, ly + 112);
+
+      // Key hint badge
+      ctx.fillStyle = hov ? '#fff' : 'rgba(255,255,255,0.35)';
+      ctx.font = 'bold 11px monospace';
+      ctx.fillText(`[${i+1}]`, 0, ly + 130);
+
+      // Description word-wrap
+      ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.font = '12px Georgia';
+      const words = opt.desc.split(' ');
+      let line = '', lineY2 = ly + 152;
+      for (const word of words) {
+        const test = line ? line + ' ' + word : word;
+        if (ctx.measureText(test).width > cardW - 32) {
+          ctx.fillText(line, 0, lineY2); line = word; lineY2 += 17;
+        } else { line = test; }
+      }
+      if (line) ctx.fillText(line, 0, lineY2);
+
+      // Bottom CTA
+      if (hov) {
+        ctx.fillStyle = bandColors[i];
+        _roundRect(ctx, lx + 16, ly + cardH - 44, cardW - 32, 30, 8); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Georgia';
+        ctx.fillText('▶  CHOISIR', 0, ly + cardH - 23);
+      }
+
+      ctx.restore(); // scale
+      ctx.restore(); // alpha
+    }
+
+    // Kill streak
+    if (this._killStreak >= 2 && slideDt > 0.5) {
+      ctx.fillStyle = '#ff8'; ctx.font = 'bold 13px Georgia'; ctx.textAlign = 'center';
+      ctx.fillText(`🔥 Série : ${this._killStreak} éliminations`, W/2, H - 72);
+    }
+  }
+
+  _drawShop(ctx) {
+    ctx.fillStyle = '#05030a'; ctx.fillRect(0, 0, W, H);
+    // Animated bg sparks
+    if (Math.random() < 0.04) Particles.sparks(rand(0,W), rand(H*0.3,H*0.8), 1, '#a08020');
+    Particles.update(0.016); Particles.draw(ctx);
+    // Title
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#c0a040'; ctx.font = 'bold 34px Georgia';
+    ctx.shadowColor = '#806020'; ctx.shadowBlur = 22;
+    ctx.fillText('🏛 PUITS DE CHARON', W/2, 108);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,200,100,0.5)'; ctx.font = 'italic 13px Georgia';
+    ctx.fillText('"Toute âme a un prix, même la vôtre."  — Charon', W/2, 138);
+    ctx.fillStyle = '#ff8'; ctx.font = 'bold 15px Georgia';
+    ctx.fillText(`💎 ${Meta.getSouls()} âmes disponibles`, W/2, 168);
+    ctx.strokeStyle = 'rgba(192,160,64,0.3)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(W/2-300, 182); ctx.lineTo(W/2+300, 182); ctx.stroke();
+    // Items
+    const itemW = 210, itemH = 240, gap = 36;
+    const totalW = this._shopItems.length * itemW + (this._shopItems.length - 1) * gap;
+    const startX = W/2 - totalW/2;
+    const itemY = 200;
+    const mx = Input.mouse.x, my = Input.mouse.y;
+    for (let i = 0; i < this._shopItems.length; i++) {
+      const item = this._shopItems[i];
+      const ix = startX + i * (itemW + gap);
+      const bought = this._shopBought.has(i);
+      const canAfford = Meta.getSouls() >= item.cost;
+      const cardHov = hitTest(mx, my, ix, itemY, itemW, itemH);
+      ctx.globalAlpha = bought ? 0.4 : 1;
+      ctx.fillStyle = bought ? '#0a0a14' : (cardHov ? '#1e1608' : '#100e06');
+      _roundRect(ctx, ix, itemY, itemW, itemH, 10); ctx.fill();
+      ctx.strokeStyle = bought ? '#2a2a2a' : (cardHov ? '#c0a040' : '#302010');
+      ctx.lineWidth = cardHov ? 2 : 1;
+      _roundRect(ctx, ix, itemY, itemW, itemH, 10); ctx.stroke();
+      ctx.font = '44px serif'; ctx.textAlign = 'center';
+      ctx.fillText(item.icon, ix + itemW/2, itemY + 60);
+      ctx.fillStyle = '#ff8'; ctx.font = 'bold 15px Georgia';
+      ctx.fillText(item.label, ix + itemW/2, itemY + 90);
+      ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.font = '12px Georgia';
+      ctx.fillText(item.desc, ix + itemW/2, itemY + 115);
+      ctx.fillStyle = bought ? '#555' : (canAfford ? '#ff8' : '#844');
+      ctx.font = 'bold 13px Georgia';
+      ctx.fillText(bought ? '✓ Acheté' : `Coût : ${item.cost} âmes`, ix + itemW/2, itemY + 143);
+      if (!bought) {
+        const btnY = itemY + itemH - 56;
+        const btnHov = hitTest(mx, my, ix + 10, btnY, itemW - 20, 42);
+        ctx.fillStyle = canAfford ? (btnHov ? '#604010' : '#3a2a08') : '#141414';
+        _roundRect(ctx, ix + 10, btnY, itemW - 20, 42, 8); ctx.fill();
+        ctx.strokeStyle = canAfford ? '#c0a040' : '#282828'; ctx.lineWidth = 1;
+        _roundRect(ctx, ix + 10, btnY, itemW - 20, 42, 8); ctx.stroke();
+        ctx.fillStyle = canAfford ? '#ff8' : '#444';
+        ctx.font = `bold ${canAfford ? 13 : 10}px Georgia`;
+        ctx.fillText(canAfford ? 'ACHETER' : 'ÂMES INSUFFISANTES', ix + itemW/2, btnY + 27);
+      }
+      ctx.globalAlpha = 1;
+    }
+    // Exit button
+    const ex = W/2 - 80, ey = H - 110;
+    const eHov = hitTest(mx, my, ex, ey, 160, 46);
+    ctx.fillStyle = eHov ? '#502020' : '#1a0808';
+    _roundRect(ctx, ex, ey, 160, 46, 10); ctx.fill();
+    ctx.strokeStyle = eHov ? '#a04020' : '#401010'; ctx.lineWidth = 1.5;
+    _roundRect(ctx, ex, ey, 160, 46, 10); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 15px Georgia'; ctx.textAlign = 'center';
+    ctx.fillText('⚔ Continuer', W/2, ey + 30);
   }
 
   _drawMenu(ctx) {
@@ -872,7 +1399,19 @@ class Game {
       // Sync P1 position (host player) for display
       if (data.p1) this._remoteP1 = data.p1;
       // Sync game state transitions
-      if (data.gameState === 'boon_pick' && this.state === STATE.PLAYING) {
+      if (data.gameState === 'fate_choice' &&
+          (this.state === STATE.PLAYING || this.state === STATE.FATE_CHOICE)) {
+        if (this.state === STATE.PLAYING) {
+          this._fateOptions = this._generateFateOptions();
+          this._fateHover   = -1;
+          this._fateAnimTimer  = 0;
+          this._fateGuardTimer = 0;
+          Input._leftJustPressed = false;
+          this.state = STATE.FATE_CHOICE;
+        }
+      }
+      if (data.gameState === 'boon_pick' &&
+          (this.state === STATE.PLAYING || this.state === STATE.FATE_CHOICE)) {
         if (data.boonChoices) {
           const choices = data.boonChoices.map(id => ALL_BOONS.find(b=>b.id===id)).filter(Boolean);
           this.boonPicker = new BoonPicker(choices, (boon)=>{
@@ -884,9 +1423,21 @@ class Game {
           this.state = STATE.BOON_PICK;
         }
       }
+      if (data.gameState === 'shop' && this.state === STATE.FATE_CHOICE) {
+        this.state = STATE.SHOP;
+      }
       if (data.gameState === 'game_over' && this.state === STATE.PLAYING) {
         this.state = STATE.GAME_OVER;
       }
+      return;
+    }
+    if (data.type === 'fate_heal' && !Net.isHost) {
+      if (this.player) this.player.heal(data.amt || 0);
+      Particles.burst(W/2, H/2, 20, '#5f5', 150, 3);
+      return;
+    }
+    if (data.type === 'shop_exit' && !Net.isHost) {
+      this._advanceToNextRoom();
       return;
     }
     if (data.type === 'input' && Net.isHost) {
@@ -964,4 +1515,7 @@ class Game {
 
 window.addEventListener('load', () => {
   window._game = new Game(document.getElementById('c'));
+  window._hitstop = (dur = 0.04) => {
+    if (window._game) window._game.hitstopTimer = Math.max(window._game.hitstopTimer, dur);
+  };
 });
