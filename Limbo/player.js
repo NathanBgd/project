@@ -9,6 +9,7 @@ class Player {
     this.hp    = 100;
     this.maxHp = 100;
     this.dead  = false;
+    this.isSpectator = false;
 
     // Dash
     this.dashCooldowns  = [0, 0];
@@ -122,6 +123,7 @@ class Player {
   }
 
   update(dt, room, mx, my) {
+    if (this.isSpectator) return;
     if (this.dead) { this.deathTimer += dt; return; }
 
     this.hitTimer   = Math.max(0, this.hitTimer   - dt);
@@ -402,6 +404,14 @@ class Player {
   }
 
   draw(ctx) {
+    if (this.isSpectator) {
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#888';
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.r, 0, TAU); ctx.fill();
+      ctx.restore();
+      return;
+    }
     if (this.dead) return;
     ctx.save();
 

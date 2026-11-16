@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v1.7.0';
+const VERSION = 'v1.8.0';
 
 const STATE = {
   MENU:'menu', GRIMOIRE:'grimoire', GUIDE:'guide', UPGRADES:'upgrades',
@@ -85,6 +85,13 @@ class Game {
     this._lastPlaystyleRatio = 0.5;
     this._killStreak = 0;
     this._killStreakTimer = 0;
+    this._spectatorMode = false;  // local player is spectating
+    this._myFateVote    = -1;     // local player's card vote index
+    this._p2FateVote    = -1;     // other player's card vote index
+    this._fateVoteTimer = -1;     // 10s countdown (-1 = not running)
+    this._fateRoulette  = false;  // roulette animation playing
+    this._fateRouletteTimer = 0;  // 2s animation timer
+    this._fateRouletteWinner = -1;// pre-computed winner index
     this._fateAnimTimer  = 0;  // drives card slide-in animation
     this._fateGuardTimer = 0;  // prevents missclicks after room clear
     this.player2    = null;    // instance Player pour P2 (hôte uniquement)
@@ -496,19 +503,22 @@ class Game {
     }
 
     if (this.player.dead && this.state===STATE.PLAYING) {
-      this.state=STATE.TRANSITION;
-      this._shake(8, 0.3);
-      const rawSouls = Meta.calcSouls(this.depth, this.roomsCleared, this.player.boonIds.length);
-      const souls = Math.round(rawSouls * (this.player.stats.soulBonus || 1));
-      this.soulsEarned = souls;
-      Meta.addSouls(souls);
-      setTimeout(()=>{
-        this._doFade(1,()=>{
-          this.state=STATE.GAME_OVER;
-          this._doFade(-1,null);
-          Logger.download();
-        });
-      }, 500);
+      if (this.coopMode) {
+        // Coop: become spectator, don't end the game
+        this.player.isSpectator = true;
+        this.player.dead = false;
+        this.player.hp = 0;
+        this._spectatorMode = true;
+        if (!Net.isHost) Net.send({ type: 'player_dead' });
+        // Host checks if P2 is also dead
+        if (Net.isHost) {
+          const p2Dead = !this.player2 || this.player2.hp <= 0;
+          if (p2Dead) this._triggerGameOver();
+        }
+        Logger.log('SYSTEM', `${Net.isHost ? 'P1' : 'P2'} est spectateur`);
+      } else {
+        this._triggerGameOver();
+      }
     }
 
     if (this.room.cleared && !this.room._boonTriggered && this.state===STATE.PLAYING) {
@@ -540,6 +550,12 @@ class Game {
       this._fateHover   = -1;
       this._fateAnimTimer  = 0;
       this._fateGuardTimer = 0.55; // 550ms guard against missclicks
+      this._myFateVote    = -1;
+      this._p2FateVote    = -1;
+      this._fateVoteTimer = -1;
+      this._fateRoulette  = false;
+      this._fateRouletteTimer = 0;
+      this._fateRouletteWinner = -1;
       Input._leftJustPressed = false; // discard the kill-click
       this.state = STATE.FATE_CHOICE;
       if (this.coopMode && Net.isHost) {
@@ -556,56 +572,115 @@ class Game {
   }
 
   _updateFateChoice(dt) {
-    // Count down timers
     if (this._fateGuardTimer > 0) { this._fateGuardTimer -= dt; return; }
     this._fateAnimTimer += dt;
 
+    // ── Roulette animation ────────────────────────────────
+    if (this._fateRoulette) {
+      this._fateRouletteTimer -= dt;
+      if (this._fateRouletteTimer <= 0 && (Net.isHost || !this.coopMode)) {
+        this._fateRoulette = false;
+        this._selectFate(this._fateOptions[this._fateRouletteWinner]);
+        if (this.coopMode) Net.send({ type:'fate_selected', index: this._fateRouletteWinner });
+      }
+      return;
+    }
+
+    // ── Countdown (votes differ) ──────────────────────────
+    if (this._fateVoteTimer >= 0) {
+      this._fateVoteTimer -= dt;
+      if (this._fateVoteTimer <= 0 && (Net.isHost || !this.coopMode)) {
+        // Start roulette
+        const opts = [this._myFateVote, this._p2FateVote];
+        this._fateRouletteWinner = opts[Math.floor(Math.random() * 2)];
+        this._fateRoulette = true;
+        this._fateRouletteTimer = 2.2;
+        if (this.coopMode) Net.send({ type:'fate_roulette', winner: this._fateRouletteWinner });
+      }
+      return;
+    }
+
     const mx = Input.mouse.x, my = Input.mouse.y;
     const lp = Input._leftJustPressed;
-    // Cards only interactive after full slide-in (0.9s)
     const cardsReady = this._fateAnimTimer > 0.9;
-
     const cardW = 220, cardH = 230, gap = 40;
     const totalW = 3 * cardW + 2 * gap;
     const startX = W/2 - totalW/2;
     const cardY = H/2 - cardH/2 + 30;
 
     this._fateHover = -1;
+    const canVote = this._myFateVote === -1; // can only vote once
 
-    // En coop, seul l'hôte choisit
-    const canChoose = !this.coopMode || Net.isHost;
-
-    // Keyboard shortcuts 1/2/3
-    if (cardsReady && canChoose) {
+    if (cardsReady && canVote) {
       for (let k = 0; k < 3; k++) {
         if (Input.justPressed(`Digit${k+1}`) || Input.justPressed(`Numpad${k+1}`)) {
-          if (this._fateOptions[k]) { this._selectFate(this._fateOptions[k]); return; }
+          this._castFateVote(k); return;
         }
       }
-    }
-
-    for (let i = 0; i < this._fateOptions.length; i++) {
-      const cx = startX + i * (cardW + gap);
-      if (cardsReady && hitTest(mx, my, cx, cardY, cardW, cardH)) {
-        if (canChoose) this._fateHover = i;
-        if (canChoose && lp) {
-          Input._leftJustPressed = false;
-          this._selectFate(this._fateOptions[i]);
-          return;
+      for (let i = 0; i < this._fateOptions.length; i++) {
+        const cx = startX + i * (cardW + gap);
+        if (hitTest(mx, my, cx, cardY, cardW, cardH)) {
+          this._fateHover = i;
+          if (lp) {
+            Input._leftJustPressed = false;
+            this._castFateVote(i);
+            return;
+          }
         }
       }
     }
     if (lp) Input._leftJustPressed = false;
 
-    // Host periodically syncs fate_choice state to client
+    // Host periodic sync
     if (this.coopMode && Net.isHost) {
-      this._netTimer = (this._netTimer||0) + dt;
-      if (this._netTimer > 0.5) {
+      this._netTimer = (this._netTimer || 0) + dt;
+      if (this._netTimer > 0.4) {
         this._netTimer = 0;
         Net.send({ type:'state', gameState:'fate_choice',
-          fateOptions: this._fateOptions.map(o => o.type) });
+          fateOptions: this._fateOptions.map(o => o.type),
+          p1Vote: this._myFateVote, p2Vote: this._p2FateVote,
+          fateTimer: this._fateVoteTimer });
       }
     }
+  }
+
+  _castFateVote(index) {
+    this._myFateVote = index;
+    if (this.coopMode) {
+      Net.send({ type:'fate_vote', index });
+      this._checkFateVotes();
+    } else {
+      this._selectFate(this._fateOptions[index]);
+    }
+  }
+
+  _checkFateVotes() {
+    if (!Net.isHost) return;
+    if (this._myFateVote === -1 || this._p2FateVote === -1) return;
+    if (this._myFateVote === this._p2FateVote) {
+      // Agreement — select immediately
+      this._selectFate(this._fateOptions[this._myFateVote]);
+    } else {
+      // Disagreement — 10s countdown
+      this._fateVoteTimer = 10;
+      Net.send({ type:'fate_countdown' });
+    }
+  }
+
+  _triggerGameOver() {
+    this.state = STATE.TRANSITION;
+    this._shake(8, 0.3);
+    const rawSouls = Meta.calcSouls(this.depth, this.roomsCleared, this.player.boonIds.length);
+    const souls = Math.round(rawSouls * (this.player.stats.soulBonus || 1));
+    this.soulsEarned = souls;
+    Meta.addSouls(souls);
+    setTimeout(() => {
+      this._doFade(1, () => {
+        this.state = STATE.GAME_OVER;
+        this._doFade(-1, null);
+        Logger.download();
+      });
+    }, 500);
   }
 
   _updateShop(dt) {
@@ -698,7 +773,7 @@ class Game {
       this.player2.draw(ctx);
       // P2 label
       ctx.fillStyle='#f8a'; ctx.font='bold 11px Georgia'; ctx.textAlign='center';
-      ctx.fillText('P2', this.player2.pos.x, this.player2.pos.y - this.player2.r - 10);
+      ctx.fillText(this.p2Name, this.player2.pos.x, this.player2.pos.y - this.player2.r - 10);
       ctx.restore();
     }
     if (this.coopMode && !Net.isHost && this._remoteP1) {
@@ -707,10 +782,21 @@ class Game {
       ctx.fillStyle = '#7af';
       ctx.beginPath(); ctx.arc(this._remoteP1.x, this._remoteP1.y, 14, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle='#7af'; ctx.font='bold 11px Georgia'; ctx.textAlign='center';
-      ctx.fillText('P1', this._remoteP1.x, this._remoteP1.y - 22);
+      ctx.fillText(this.p1Name, this._remoteP1.x, this._remoteP1.y - 22);
       ctx.restore();
     }
     this.player.drawHUD(ctx);
+    // Spectator banner
+    if (this._spectatorMode) {
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(PLAY.x, PLAY.y + PLAY.h/2 - 22, PLAY.w, 44);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#f88'; ctx.font = 'bold 20px Georgia'; ctx.textAlign = 'center';
+      ctx.fillText('⚰ SPECTATEUR — Votre coéquipier continue...', W/2, PLAY.y + PLAY.h/2 + 7);
+      ctx.restore();
+    }
     this._drawDepthHUD(ctx);
     this._drawBoonIcons(ctx);
     this._drawSynergyIcons(ctx);
@@ -907,44 +993,35 @@ class Game {
     const t = this._fateAnimTimer;
     const guardActive = this._fateGuardTimer > 0;
 
-    // ── Phase 1 : « SALLE DÉGAGÉE » flash (0 → 0.65s) ──────
-    const flashDur  = 0.65;
+    const flashDur   = 0.65;
     const flashAlpha = guardActive
-      ? Math.min(1, this._fateGuardTimer / 0.3)              // during guard: fade in
-      : (t < flashDur ? 1 - (t / flashDur) : 0);             // after guard: fade out
+      ? Math.min(1, this._fateGuardTimer / 0.3)
+      : (t < flashDur ? 1 - (t / flashDur) : 0);
 
-    // Dark overlay (opacity ramps up with animation)
     const overlayA = guardActive ? 0.5 : Math.min(0.82, 0.5 + t * 0.6);
     ctx.fillStyle = `rgba(0,0,0,${overlayA})`; ctx.fillRect(0, 0, W, H);
 
     if (flashAlpha > 0.01) {
-      ctx.save();
-      ctx.globalAlpha = flashAlpha;
+      ctx.save(); ctx.globalAlpha = flashAlpha;
       ctx.textAlign = 'center';
-      // Flash text
       const flashScale = 1.0 + 0.12 * Math.sin(flashAlpha * Math.PI);
       ctx.save();
-      ctx.translate(W/2, H/2 - 10);
-      ctx.scale(flashScale, flashScale);
+      ctx.translate(W/2, H/2 - 10); ctx.scale(flashScale, flashScale);
       ctx.fillStyle = '#ffe066';
       ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 60;
       ctx.font = 'bold 56px Georgia';
       ctx.fillText('SALLE DÉGAGÉE', 0, 0);
-      ctx.shadowBlur = 0;
-      ctx.restore();
+      ctx.shadowBlur = 0; ctx.restore();
       ctx.fillStyle = `rgba(255,255,255,${flashAlpha * 0.55})`;
       ctx.font = '16px Georgia';
       ctx.fillText('— Préparez-vous pour le prochain choix —', W/2, H/2 + 42);
       ctx.restore();
     }
 
-    // ── Phase 2 : cartes (commencent à glisser après 0.1s de guard-clear) ──
-    const cardSlideStart = 0.1; // seconds after guard lifts before cards begin sliding
+    const cardSlideStart = 0.1;
     if (guardActive || t < cardSlideStart) return;
-
     const slideDt = t - cardSlideStart;
 
-    // EaseOutBack pour le slide-in
     const easeOutBack = (x) => {
       const c1 = 1.70158, c3 = c1 + 1;
       return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
@@ -956,7 +1033,7 @@ class Game {
     const cardY   = H/2 - cardH/2 + 24;
     const mx = Input.mouse.x, my = Input.mouse.y;
 
-    // Title fades in
+    // Title
     const titleA = Math.min(1, (slideDt - 0.0) / 0.35);
     if (titleA > 0) {
       ctx.save(); ctx.globalAlpha = titleA;
@@ -965,58 +1042,83 @@ class Game {
       ctx.shadowColor = '#c0a040'; ctx.shadowBlur = 20;
       ctx.fillText('CHOISISSEZ VOTRE DESTIN', W/2, cardY - 56);
       ctx.shadowBlur = 0;
-      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = 'italic 13px Georgia';
-      ctx.fillText('Soyez sage, mortel — chaque choix forge votre légende.', W/2, cardY - 28);
+      // Coop: show who has voted
+      if (this.coopMode && slideDt > 0.5) {
+        const p1n = Net.isHost ? (this.p1Name||'Hôte') : (this.p2Name||'Hôte');
+        const p2n = Net.isHost ? (this.p2Name||'Client') : (this.p1Name||'Client');
+        const myVote  = this._myFateVote;
+        const p2Vote  = this._p2FateVote;
+        const myReady  = myVote !== -1 ? ` ✓ (${this._fateOptions[myVote]?.label||''})` : ' — en attente…';
+        const p2Ready  = p2Vote !== -1 ? ` ✓ (${this._fateOptions[p2Vote]?.label||''})` : ' — en attente…';
+        ctx.fillStyle = '#8af'; ctx.font = '12px Georgia';
+        ctx.fillText(`${Net.isHost?'👑':' '}${p1n}${Net.isHost?myReady:p2Ready}   |   ${Net.isHost?' ':'👑'}${p2n}${Net.isHost?p2Ready:myReady}`, W/2, cardY - 28);
+      } else if (!this.coopMode) {
+        ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = 'italic 13px Georgia';
+        ctx.fillText('Soyez sage, mortel — chaque choix forge votre légende.', W/2, cardY - 28);
+      }
       ctx.restore();
     }
 
     const cardColors = ['#1e1240', '#0d2020', '#1e1208'];
     const bandColors  = ['#5533cc', '#119955', '#bb6600'];
 
+    // Roulette: compute which card is "highlighted"
+    let rouletteHighlight = -1;
+    if (this._fateRoulette && this._fateRouletteTimer > 0) {
+      const prog = 1 - (this._fateRouletteTimer / 2.2);
+      // Bounce between the two voted options, slowing down
+      const speed = Math.max(2, 18 * (1 - prog));
+      const bounceIdx = Math.floor(Date.now() / (1000 / speed)) % 2;
+      const opts = [this._myFateVote, this._p2FateVote];
+      if (this._fateRouletteTimer < 0.4) {
+        rouletteHighlight = this._fateRouletteWinner;
+      } else {
+        rouletteHighlight = opts[bounceIdx];
+      }
+    }
+
     for (let i = 0; i < this._fateOptions.length; i++) {
       const opt = this._fateOptions[i];
-      const slideDelay = 0.08 + i * 0.12; // staggered slide
+      const slideDelay = 0.08 + i * 0.12;
       const rawP = Math.min(1, Math.max(0, (slideDt - slideDelay) / 0.44));
       const p = easeOutBack(rawP);
 
       const cx = startX + i * (cardW + gap);
-      const drawY = cardY + (1 - p) * 90; // slides up from below
+      const drawY = cardY + (1 - p) * 90;
       const alpha = Math.min(1, rawP * 2.5);
 
       ctx.save(); ctx.globalAlpha = alpha;
 
-      const hov = rawP >= 1 && hitTest(mx, my, cx, cardY, cardW, cardH);
-      const scale = hov ? 1.04 : 1.0;
+      const hov = rawP >= 1 && this._myFateVote === -1 && hitTest(mx, my, cx, cardY, cardW, cardH);
+      const isRoulette = rouletteHighlight === i;
+      const isMyVote   = this._myFateVote === i;
+      const isP2Vote   = this._p2FateVote === i;
+      const scale = (hov || isRoulette) ? 1.06 : (isMyVote ? 1.03 : 1.0);
 
       ctx.save();
       ctx.translate(cx + cardW/2, drawY + cardH/2);
       ctx.scale(scale, scale);
       const lx = -cardW/2, ly = -cardH/2;
 
-      // Card shadow
+      // Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       _roundRect(ctx, lx + 5, ly + 8, cardW, cardH, 14); ctx.fill();
 
       // Card body
-      if (hov) {
-        ctx.shadowColor = bandColors[i]; ctx.shadowBlur = 28;
-      }
-      ctx.fillStyle = hov ? cardColors[i].replace('#', '#2') : cardColors[i];
+      if (hov || isRoulette) { ctx.shadowColor = bandColors[i]; ctx.shadowBlur = 32; }
+      ctx.fillStyle = cardColors[i];
       _roundRect(ctx, lx, ly, cardW, cardH, 14); ctx.fill();
       ctx.shadowBlur = 0;
 
-      // Coloured top band
+      // Top band
       ctx.save();
-      ctx.beginPath();
-      _roundRect(ctx, lx, ly, cardW, 10, 14);
-      ctx.clip();
-      ctx.fillStyle = bandColors[i];
-      ctx.fillRect(lx, ly, cardW, 10);
+      ctx.beginPath(); _roundRect(ctx, lx, ly, cardW, 10, 14); ctx.clip();
+      ctx.fillStyle = bandColors[i]; ctx.fillRect(lx, ly, cardW, 10);
       ctx.restore();
 
       // Border
-      ctx.strokeStyle = hov ? '#fff' : `rgba(255,255,255,${0.1 + i * 0.04})`;
-      ctx.lineWidth = hov ? 2.5 : 1.2;
+      ctx.strokeStyle = (hov || isRoulette) ? '#fff' : (isMyVote ? '#ffdd44' : `rgba(255,255,255,0.1)`);
+      ctx.lineWidth = (hov || isRoulette || isMyVote) ? 2.5 : 1.2;
       _roundRect(ctx, lx, ly, cardW, cardH, 14); ctx.stroke();
 
       // Icon
@@ -1027,12 +1129,12 @@ class Game {
       ctx.fillStyle = '#fff'; ctx.font = 'bold 17px Georgia';
       ctx.fillText(opt.label, 0, ly + 112);
 
-      // Key hint badge
-      ctx.fillStyle = hov ? '#fff' : 'rgba(255,255,255,0.35)';
+      // Key hint
+      ctx.fillStyle = this._myFateVote === -1 ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.1)';
       ctx.font = 'bold 11px monospace';
       ctx.fillText(`[${i+1}]`, 0, ly + 130);
 
-      // Description word-wrap
+      // Description
       ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.font = '12px Georgia';
       const words = opt.desc.split(' ');
       let line = '', lineY2 = ly + 152;
@@ -1044,16 +1146,52 @@ class Game {
       }
       if (line) ctx.fillText(line, 0, lineY2);
 
-      // Bottom CTA
-      if (hov) {
+      // Vote badges (coop)
+      if (this.coopMode) {
+        let badgeY = ly + cardH - 48;
+        if (isMyVote) {
+          ctx.fillStyle = '#ffdd44';
+          _roundRect(ctx, lx + 10, badgeY, cardW - 20, 20, 5); ctx.fill();
+          ctx.fillStyle = '#000'; ctx.font = 'bold 11px Georgia';
+          ctx.fillText(`${Net.isHost ? (this.p1Name||'Hôte') : (this.p2Name||'Client')} ✓`, 0, badgeY + 14);
+          badgeY += 22;
+        }
+        if (isP2Vote) {
+          ctx.fillStyle = '#44aaff';
+          _roundRect(ctx, lx + 10, badgeY, cardW - 20, 20, 5); ctx.fill();
+          ctx.fillStyle = '#000'; ctx.font = 'bold 11px Georgia';
+          ctx.fillText(`${Net.isHost ? (this.p2Name||'Client') : (this.p1Name||'Hôte')} ✓`, 0, badgeY + 14);
+        }
+      } else if (hov) {
         ctx.fillStyle = bandColors[i];
         _roundRect(ctx, lx + 16, ly + cardH - 44, cardW - 32, 30, 8); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Georgia';
         ctx.fillText('▶  CHOISIR', 0, ly + cardH - 23);
       }
 
-      ctx.restore(); // scale
-      ctx.restore(); // alpha
+      ctx.restore(); ctx.restore();
+    }
+
+    // Countdown bar
+    if (this._fateVoteTimer >= 0 && !this._fateRoulette && slideDt > 0.5) {
+      const pct = this._fateVoteTimer / 10;
+      const barW = 400, barH = 10, barX = W/2 - barW/2, barY = cardY + cardH + 24;
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      _roundRect(ctx, barX, barY, barW, barH, 5); ctx.fill();
+      ctx.fillStyle = pct > 0.4 ? '#ff8' : '#f44';
+      _roundRect(ctx, barX, barY, barW * pct, barH, 5); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 13px Georgia'; ctx.textAlign = 'center';
+      ctx.fillText(`⚔ Désaccord ! Roulette dans ${Math.ceil(this._fateVoteTimer)}s…`, W/2, barY + 28);
+    }
+
+    // Roulette message
+    if (this._fateRoulette) {
+      const pulse = 0.7 + Math.sin(Date.now() * 0.008) * 0.3;
+      ctx.save(); ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#ff8'; ctx.font = 'bold 18px Georgia'; ctx.textAlign = 'center';
+      ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 20;
+      ctx.fillText('🎲 LA ROULETTE DU DESTIN TOURNE…', W/2, cardY + cardH + 36);
+      ctx.shadowBlur = 0; ctx.restore();
     }
 
     // Kill streak
@@ -1062,12 +1200,12 @@ class Game {
       ctx.fillText(`🔥 Série : ${this._killStreak} éliminations`, W/2, H - 72);
     }
 
-    // Coop: client voit les cartes mais ne peut pas choisir
-    if (this.coopMode && !Net.isHost && slideDt > 0.9) {
+    // Coop: waiting message
+    if (this.coopMode && !Net.isHost && slideDt > 0.9 && this._myFateVote !== -1 && this._p2FateVote === -1) {
       const pulse = 0.6 + Math.sin(Date.now() * 0.003) * 0.4;
       ctx.save(); ctx.globalAlpha = pulse;
       ctx.fillStyle = '#8af'; ctx.font = 'bold 13px Georgia'; ctx.textAlign = 'center';
-      ctx.fillText('⏳ En attente du choix de l\'hôte…', W/2, H - 48);
+      ctx.fillText('⏳ En attente du vote de l\'hôte…', W/2, H - 48);
       ctx.restore();
     }
   }
@@ -1579,6 +1717,35 @@ class Game {
       if (Net.isHost) this._checkBothReady();
       return;
     }
+    if (data.type === 'fate_vote') {
+      this._p2FateVote = data.index;
+      if (Net.isHost) this._checkFateVotes();
+      return;
+    }
+    if (data.type === 'fate_countdown' && !Net.isHost) {
+      this._fateVoteTimer = 10;
+      return;
+    }
+    if (data.type === 'fate_roulette' && !Net.isHost) {
+      this._fateRouletteWinner = data.winner;
+      this._fateRoulette = true;
+      this._fateRouletteTimer = 2.2;
+      return;
+    }
+    if (data.type === 'fate_selected' && !Net.isHost) {
+      this._fateRoulette = false;
+      this._selectFate(this._fateOptions[data.index]);
+      return;
+    }
+    if (data.type === 'player_dead' && Net.isHost) {
+      // P2 died — check if game over or spectator
+      if (this.player && this.player.hp <= 0) {
+        this._triggerGameOver();
+      }
+      // else P1 continues alone
+      Logger.log('SYSTEM', 'P2 est devenu spectateur');
+      return;
+    }
     if (data.type === 'start' && !Net.isHost) {
       // Client received start signal from host
       this.coopMode = true;
@@ -1605,16 +1772,20 @@ class Game {
       // Sync P1 position (host player) for display
       if (data.p1) this._remoteP1 = data.p1;
       // Sync game state transitions
-      if (data.gameState === 'fate_choice' &&
-          (this.state === STATE.PLAYING || this.state === STATE.FATE_CHOICE)) {
+      if (data.gameState === 'fate_choice') {
         if (this.state === STATE.PLAYING) {
           this._fateOptions = this._generateFateOptions();
-          this._fateHover   = -1;
-          this._fateAnimTimer  = 0;
+          this._fateHover = -1;
+          this._fateAnimTimer = 0;
           this._fateGuardTimer = 0;
+          this._myFateVote = -1; this._p2FateVote = -1;
+          this._fateVoteTimer = -1; this._fateRoulette = false;
           Input._leftJustPressed = false;
           this.state = STATE.FATE_CHOICE;
         }
+        // Always sync vote state from host
+        if (data.p1Vote !== undefined) this._p2FateVote = data.p1Vote; // host's vote = p2 from client view
+        if (data.fateTimer !== undefined && data.fateTimer >= 0) this._fateVoteTimer = data.fateTimer;
       }
       if (data.gameState === 'boon_pick' &&
           (this.state === STATE.PLAYING || this.state === STATE.FATE_CHOICE)) {
