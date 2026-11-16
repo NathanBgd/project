@@ -644,7 +644,7 @@ class UpgradeShopScreen {
     // Footer — calé sous la dernière rangée de cartes
     const rows = Math.ceil(PERMANENT_UPGRADES.length / 2);
     const { cardH, cardY: lastCardY } = this._cardLayout(PERMANENT_UPGRADES.length - 1);
-    const footerY = lastCardY + cardH + 14;
+    const footerY = lastCardY + cardH + 22;
 
     ctx.fillStyle = 'rgba(200,180,255,0.5)'; ctx.font = '12px Georgia'; ctx.textAlign = 'left';
     ctx.fillText(`Âmes dépensées au total : ${soulsSpent}`, 50, footerY);
