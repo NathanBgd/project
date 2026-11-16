@@ -434,10 +434,10 @@ class Room {
       }
     }
 
-    this.enemies     = this.enemies    .filter(e => !e.dead);
+    // NE PAS filtrer this.enemies — on garde les morts pour conserver les indices stables (sync coop)
     this.projectiles = this.projectiles.filter(p => !p.dead);
 
-    if (this.enemies.length === 0 && !this.cleared) {
+    if (this.enemies.length > 0 && this.enemies.every(e => e.dead) && !this.cleared) {
       this.cleared = true;
       Logger.log('ROOM', `Room cleared at depth ${this.depth}`);
     }

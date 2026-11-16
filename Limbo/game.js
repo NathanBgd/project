@@ -85,7 +85,8 @@ class Game {
     this._lastPlaystyleRatio = 0.5;
     this._killStreak = 0;
     this._killStreakTimer = 0;
-    this._spectatorMode = false;  // local player is spectating
+    this._spectatorMode   = false;  // local player is spectating
+    this._hostIsSpectator = false;  // remote host became spectator (client-side flag)
     this._myFateVote    = -1;     // local player's card vote index
     this._p2FateVote    = -1;     // other player's card vote index
     this._fateVoteTimer = -1;     // 10s countdown (-1 = not running)
@@ -406,7 +407,24 @@ class Game {
     this.runTime+=dt;
     const prevHp=this.player.hp;
     const prevAlive = this.room.enemies.filter(e => !e.dead).length;
+
+    // ── COOP CLIENT: snapshot dead mask avant room.update pour détecter les kills locaux
+    let _prevDeadMask = null;
+    if (this.coopMode && !Net.isHost) {
+      _prevDeadMask = this.room.enemies.map(e => e.dead);
+    }
+
     this.room.update(dt, this.player);
+
+    // ── COOP CLIENT: signaler au host les ennemis tués localement
+    if (this.coopMode && !Net.isHost && _prevDeadMask) {
+      const newKills = [];
+      for (let i = 0; i < this.room.enemies.length; i++) {
+        if (!_prevDeadMask[i] && this.room.enemies[i].dead) newKills.push(i);
+      }
+      if (newKills.length) Net.send({ type: 'kill_enemy', indices: newKills });
+    }
+
     this.player.update(dt, this.room, Input.mouse.x, Input.mouse.y);
 
     // ── COOP: update P2 (host only) ───────────────────────
@@ -514,6 +532,7 @@ class Game {
         if (Net.isHost) {
           const p2Dead = !this.player2 || this.player2.hp <= 0;
           if (p2Dead) this._triggerGameOver();
+          else Net.send({ type: 'host_dead' }); // avertit le client que P1 est spectateur
         }
         Logger.log('SYSTEM', `${Net.isHost ? 'P1' : 'P2'} est spectateur`);
       } else {
@@ -656,6 +675,13 @@ class Game {
 
   _checkFateVotes() {
     if (!Net.isHost) return;
+    // Si l'hôte est spectateur, le client décide seul
+    if (this._spectatorMode) {
+      if (this._p2FateVote !== -1) {
+        this._selectFate(this._fateOptions[this._p2FateVote]);
+      }
+      return;
+    }
     if (this._myFateVote === -1 || this._p2FateVote === -1) return;
     if (this._myFateVote === this._p2FateVote) {
       // Agreement — select immediately
@@ -1200,8 +1226,8 @@ class Game {
       ctx.fillText(`🔥 Série : ${this._killStreak} éliminations`, W/2, H - 72);
     }
 
-    // Coop: waiting message
-    if (this.coopMode && !Net.isHost && slideDt > 0.9 && this._myFateVote !== -1 && this._p2FateVote === -1) {
+    // Coop: waiting message (uniquement si hôte n'est pas spectateur)
+    if (this.coopMode && !Net.isHost && !this._hostIsSpectator && slideDt > 0.9 && this._myFateVote !== -1 && this._p2FateVote === -1) {
       const pulse = 0.6 + Math.sin(Date.now() * 0.003) * 0.4;
       ctx.save(); ctx.globalAlpha = pulse;
       ctx.fillStyle = '#8af'; ctx.font = 'bold 13px Georgia'; ctx.textAlign = 'center';
@@ -1746,6 +1772,23 @@ class Game {
       Logger.log('SYSTEM', 'P2 est devenu spectateur');
       return;
     }
+    if (data.type === 'host_dead' && !Net.isHost) {
+      // P1 (host) est spectateur — P2 peut décider seul
+      this._hostIsSpectator = true;
+      Logger.log('SYSTEM', 'P1 est spectateur — P2 joue seul');
+      return;
+    }
+    if (data.type === 'kill_enemy' && Net.isHost) {
+      // Client a tué des ennemis localement — appliquer sur le host
+      for (const idx of (data.indices || [])) {
+        const e = this.room && this.room.enemies[idx];
+        if (e && !e.dead) {
+          e.dead = true; e.hp = 0;
+          if (!e._deathFX) { e._deathFX = true; Particles.death(e.pos.x, e.pos.y, e.color || '#f88', e.r || 18); }
+        }
+      }
+      return;
+    }
     if (data.type === 'start' && !Net.isHost) {
       // Client received start signal from host
       this.coopMode = true;
@@ -1857,6 +1900,7 @@ class Game {
     }
     this.depth = 1; this.roomsCleared = 0; this.runTime = 0; this.soulsEarned = 0;
     this.perfMult = 1.0; this.roomClearTimes = []; this._roomStartTime = 0;
+    this._spectatorMode = false; this._hostIsSpectator = false;
     Particles.clear();
     this._loadRoom();
     this.state = STATE.PLAYING;
